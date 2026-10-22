@@ -17,7 +17,7 @@
   --border-color: #111111;   /* Inky Deep Black */
   --border-width: 3px;
   --border: 3px solid #111111;
-  --border-thin: 2px solid #111111;
+  --border-thin: 3px solid #111111;
 
   /* Text & Foreground */
   --text-main: #111111;
@@ -356,7 +356,7 @@ html, body {
   padding: 16px;
   margin: 14px;
   border: var(--border);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
   background-color: var(--panel-bg);
 }
 
@@ -455,21 +455,21 @@ html, body {
   padding: 12px;
   background-color: var(--panel-bg);
   border: var(--border);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
   cursor: pointer;
   transition: transform 0.08s ease, box-shadow 0.08s ease;
 }
 
 .queue-item:hover {
   transform: translate(-1px, -1px);
-  box-shadow: 5px 5px 0 var(--border-color);
+  box-shadow: 7px 7px 0 var(--border-color);
 }
 
 /* Selected Card: Thicker Shadow & Slight Offset */
 .queue-item.active {
   background-color: #FFFDF8;
   border: var(--border);
-  box-shadow: 7px 7px 0 var(--border-color);
+  box-shadow: 8px 8px 0 var(--border-color);
   transform: translate(-2px, -2px);
 }
 
@@ -706,10 +706,10 @@ html, body {
 
 .pr-meta-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   background-color: var(--desk-bg);
-  border: var(--border-thin);
+  border: var(--border);
   box-shadow: var(--shadow-sm);
   padding: 12px 14px;
   margin-bottom: 20px;
@@ -848,7 +848,7 @@ html, body {
 .diff-viewer-wrapper {
   background-color: var(--panel-bg);
   border: var(--border);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
   margin-top: 6px;
   overflow: hidden;
 }
@@ -1183,7 +1183,7 @@ html, body {
 .assessment-card {
   background-color: var(--panel-bg);
   border: var(--border);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
   padding: 18px;
 }
 
@@ -1406,7 +1406,7 @@ html, body {
 .evidence-item-card {
   background-color: var(--panel-bg);
   border: var(--border);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
   padding: 14px;
   cursor: pointer;
   transition: transform 0.08s ease, box-shadow 0.08s ease;
@@ -1415,12 +1415,12 @@ html, body {
 
 .evidence-item-card:hover {
   transform: translate(-1px, -1px);
-  box-shadow: 5px 5px 0 var(--border-color);
+  box-shadow: 7px 7px 0 var(--border-color);
 }
 
 .evidence-item-card.active-evidence-card {
   border-color: var(--border-color);
-  box-shadow: 6px 6px 0 var(--border-color);
+  box-shadow: 8px 8px 0 var(--border-color);
   transform: translate(-2px, -2px);
   background-color: #FFFDF8;
 }
@@ -1455,7 +1455,7 @@ html, body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   padding: 3px 8px;
-  border: 2px solid var(--border-color);
+  border: 3px solid var(--border-color);
   box-shadow: 2px 2px 0 var(--border-color);
   color: var(--text-main);
   user-select: none;
@@ -1682,7 +1682,7 @@ html, body {
   }
 
   .pr-meta-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 

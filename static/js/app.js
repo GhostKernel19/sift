@@ -481,10 +481,10 @@
       const statusBadge = createEl('span', 'verification-status-badge');
       if (item.verified) {
         statusBadge.classList.add('status-verified');
-        statusBadge.textContent = '✓ VERIFIED IN SOURCE';
+        statusBadge.textContent = 'VERIFIED IN SOURCE';
       } else {
         statusBadge.classList.add('status-quarantined');
-        statusBadge.textContent = '⚠ NOT FOUND IN SOURCE';
+        statusBadge.textContent = 'NOT FOUND IN SOURCE';
       }
 
       header.appendChild(srcTag);
@@ -582,7 +582,9 @@
     dom.prNumberBadge.textContent = `#${pr.pull_number}`;
     dom.prHeadlineText.textContent = pr.title || 'Untitled Pull Request';
     dom.prAuthorVal.textContent = `@${pr.author || 'author'}`;
-    dom.prAssocVal.textContent = (pr.author_association || 'CONTRIBUTOR').replace(/_/g, ' ');
+    if (dom.prAssocVal) {
+      dom.prAssocVal.textContent = (pr.author_association || 'CONTRIBUTOR').replace(/_/g, ' ');
+    }
     dom.prStateVal.textContent = (pr.state || 'OPEN').toUpperCase();
 
     clearElement(dom.prDeltaVal);
