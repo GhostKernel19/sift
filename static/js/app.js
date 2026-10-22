@@ -42,7 +42,10 @@
     currentRepo: null,
     currentPR: null,
     currentAssessment: null,
+    currentDossier: null,
     isCached: false,
+    isAnalyzing: false,
+    lastAnalyzeTarget: null,
     activeEvidenceIndex: null,
     queue: [],
     loadingTimer: null
@@ -70,6 +73,9 @@
     stateContent: document.getElementById('state-content'),
     stateModelUnavailable: document.getElementById('state-model-unavailable'),
     statePartialDataBanner: document.getElementById('state-partial-data-banner'),
+    stateLiveFailureBanner: document.getElementById('state-live-failure-banner'),
+    liveFailureText: document.getElementById('live-failure-text'),
+    btnDismissLiveFailure: document.getElementById('btn-dismiss-live-failure'),
     partialDataTitle: document.getElementById('partial-data-title'),
     partialDataText: document.getElementById('partial-data-text'),
     btnDismissAlert: document.getElementById('btn-dismiss-alert'),
@@ -100,6 +106,9 @@
     diffCodePanel: document.getElementById('diff-code-panel'),
 
     // Assessment Column
+    assessmentEmptyState: document.getElementById('assessment-empty-state'),
+    assessmentScrollArea: document.getElementById('assessment-scroll-area'),
+    cardReplyDraft: document.getElementById('card-reply-draft'),
     assessorModelBadge: document.getElementById('assessor-model-badge'),
     badgeConfidence: document.getElementById('badge-confidence'),
     badgeRecommendation: document.getElementById('badge-recommendation'),
@@ -121,7 +130,8 @@
     // Footer
     footerDataSource: document.getElementById('footer-data-source'),
     footerTimestamp: document.getElementById('footer-timestamp'),
-    footerModelName: document.getElementById('footer-model-name')
+    footerModelName: document.getElementById('footer-model-name'),
+    footerVerifiedBadge: document.getElementById('footer-verified-badge')
   };
 
   // ============================================================================
@@ -132,6 +142,18 @@
     dom.stateLoading.style.display = viewName === 'loading' ? 'flex' : 'none';
     dom.stateError.style.display = viewName === 'error' ? 'flex' : 'none';
     dom.stateContent.style.display = viewName === 'content' ? 'flex' : 'none';
+
+    // Ensure right column never shows an assessment when center is in empty or error state
+    if (viewName === 'error' || viewName === 'empty') {
+      if (dom.assessmentEmptyState) dom.assessmentEmptyState.style.display = 'block';
+      if (dom.assessmentScrollArea) dom.assessmentScrollArea.style.display = 'none';
+      if (dom.cardReplyDraft) dom.cardReplyDraft.style.display = 'none';
+      if (dom.footerVerifiedBadge) dom.footerVerifiedBadge.style.display = 'none';
+    } else if (viewName === 'content') {
+      if (dom.assessmentEmptyState) dom.assessmentEmptyState.style.display = 'none';
+      if (dom.assessmentScrollArea) dom.assessmentScrollArea.style.display = 'block';
+      if (dom.cardReplyDraft) dom.cardReplyDraft.style.display = 'block';
+    }
   }
 
   // ============================================================================
@@ -682,7 +704,20 @@
       dom.btnRerunLive.style.display = dossierData.cache_hit ? 'inline-block' : 'none';
     }
 
+    // Footnote "Substrings Verified" must appear ONLY when verification ran on the displayed result
+    const assessmentObj = dossierData.assessment || dossierData.data;
+    const verificationRan = Boolean(
+      assessmentObj &&
+      Array.isArray(assessmentObj.evidence) &&
+      assessmentObj.evidence.length > 0 &&
+      assessmentObj.evidence.some(e => typeof e.verified === 'boolean')
+    );
+    if (dom.footerVerifiedBadge) {
+      dom.footerVerifiedBadge.style.display = verificationRan ? 'inline' : 'none';
+    }
+
     // 10. Show Content
+    state.currentDossier = dossierData;
     switchDossierTab('tab-overview');
     showViewState('content');
   }
@@ -690,6 +725,23 @@
   // ============================================================================
   // Typed Error Presentation
   // ============================================================================
+  function sanitizeErrorDetails(details) {
+    if (!details) return '';
+    const str = String(details).trim();
+    if (str.startsWith('{') || str.includes('"error":') || str.includes('"code":')) {
+      try {
+        const parsed = JSON.parse(str);
+        if (parsed.error && parsed.error.message) return parsed.error.message;
+        if (parsed.message) return parsed.message;
+      } catch {
+        const match = str.match(/"message"\s*:\s*"([^"]+)"/);
+        if (match) return match[1];
+      }
+      return 'The request was throttled or rejected by the service provider.';
+    }
+    return str;
+  }
+
   function showError(errorType, message, details) {
     showViewState('error');
     if (dom.errorTitle) {
@@ -698,7 +750,7 @@
       } else if (errorType === 'not_found') {
         dom.errorTitle.textContent = 'Repository or PR Not Found';
       } else if (errorType === 'rate_limit') {
-        dom.errorTitle.textContent = 'GitHub Rate Limit Exceeded';
+        dom.errorTitle.textContent = 'Rate Limit Exceeded';
       } else if (errorType === 'no_prs') {
         dom.errorTitle.textContent = 'No Open Pull Requests';
       } else if (errorType === 'network_error') {
@@ -718,7 +770,7 @@
 
     if (details && dom.errorDetailsContainer && dom.errorDetailsCode) {
       dom.errorDetailsContainer.style.display = 'block';
-      dom.errorDetailsCode.textContent = String(details);
+      dom.errorDetailsCode.textContent = sanitizeErrorDetails(details);
     } else if (dom.errorDetailsContainer) {
       dom.errorDetailsContainer.style.display = 'none';
     }
@@ -842,6 +894,10 @@
 
       // On Click -> Calls POST /api/analyze for that single PR!
       li.addEventListener('click', () => {
+        if (state.isAnalyzing) {
+          console.warn('Analysis already in progress. Ignoring duplicate click.');
+          return;
+        }
         const allItems = dom.queueList.querySelectorAll('.queue-item');
         allItems.forEach(item => item.classList.remove('active'));
         li.classList.add('active');
@@ -867,7 +923,19 @@
   // ============================================================================
   // Single Pull Request Assessment Orchestration (POST /api/analyze)
   // ============================================================================
-  async function analyzePullRequest(target) {
+  async function analyzePullRequest(target, options = {}) {
+    if (state.isAnalyzing) {
+      console.warn('Analysis in progress. Blocking concurrent/duplicate request.');
+      return;
+    }
+    state.isAnalyzing = true;
+    if (dom.btnAnalyze) dom.btnAnalyze.disabled = true;
+    if (dom.btnRerunLive) dom.btnRerunLive.disabled = true;
+    if (dom.btnErrorRetry) dom.btnErrorRetry.disabled = true;
+
+    state.lastAnalyzeTarget = target;
+    const isAutoRetry = Boolean(options.isAutoRetry);
+
     let payload = {};
 
     if (typeof target === 'string') {
@@ -895,6 +963,21 @@
       payload = Object.assign({}, target);
     }
 
+    if (options.force_live) {
+      payload.force_live = true;
+    }
+
+    // Check if a cached dossier exists for this PR
+    const currentPRNum = state.currentDossier && (state.currentDossier.pull_number || (state.currentDossier.pr && state.currentDossier.pr.number));
+    const targetPRNum = payload.pull_number || payload.number;
+    const hasCachedDossier = Boolean(
+      state.currentDossier &&
+      (!targetPRNum || targetPRNum === currentPRNum)
+    );
+
+    // Hide any previous live failure banner on new attempt
+    if (dom.stateLiveFailureBanner) dom.stateLiveFailureBanner.style.display = 'none';
+
     showViewState('loading');
 
     const steps = [
@@ -918,6 +1001,11 @@
       }
     });
 
+    const loadingTitle = dom.stateLoading.querySelector('.loading-title');
+    const loadingSubtext = dom.stateLoading.querySelector('.loading-subtext');
+    if (loadingTitle) loadingTitle.textContent = 'Analyzing Pull Request…';
+    if (loadingSubtext) loadingSubtext.textContent = 'Waiting for real backend response. Zero contributor profiling.';
+
     if (steps[0]) steps[0].className = 'timeline-step step-active';
 
     try {
@@ -927,12 +1015,85 @@
         body: JSON.stringify(payload)
       });
 
-      const resData = await response.json();
+      let resData = null;
+      try {
+        resData = await response.json();
+      } catch {
+        resData = {
+          status: 'error',
+          error_type: 'server_error',
+          error: `HTTP ${response.status}: Failed to parse server response`
+        };
+      }
+
+      // Check HTTP 429 or rate_limit
+      if (response.status === 429 || resData.error_type === 'rate_limit') {
+        const delay = parseInt(resData.retry_delay, 10) || 15;
+        if (!isAutoRetry) {
+          // Auto-retry ONCE with countdown
+          let secondsLeft = delay;
+          if (loadingTitle) {
+            loadingTitle.textContent = `Rate limited by the free Gemini tier. Retrying in ${secondsLeft}s`;
+          }
+          if (loadingSubtext) {
+            loadingSubtext.textContent = 'Free Gemini tier quota cooling down. Automatic retry will fire once the window resets.';
+          }
+
+          if (state.loadingTimer) {
+            clearInterval(state.loadingTimer);
+          }
+
+          state.loadingTimer = setInterval(() => {
+            secondsLeft -= 1;
+            if (secondsLeft > 0) {
+              if (loadingTitle) {
+                loadingTitle.textContent = `Rate limited by the free Gemini tier. Retrying in ${secondsLeft}s`;
+              }
+            } else {
+              clearInterval(state.loadingTimer);
+              state.loadingTimer = null;
+              state.isAnalyzing = false; // Release lock for auto-retry invocation
+              analyzePullRequest(target, { isAutoRetry: true, force_live: Boolean(payload.force_live) });
+            }
+          }, 1000);
+          return;
+        }
+
+        // Already retried once, still rate-limited!
+        if (hasCachedDossier) {
+          loadDossierIntoDesk(state.currentDossier);
+          if (dom.stateLiveFailureBanner) {
+            dom.stateLiveFailureBanner.style.display = 'flex';
+            const cacheTime = state.currentDossier.cached_on || state.currentDossier.cached_at || 'earlier';
+            dom.liveFailureText.textContent = `Live run failed (Rate limited by the free Gemini tier). Showing cached result from ${cacheTime}.`;
+          }
+          return;
+        }
+
+        showError(
+          'rate_limit',
+          'Rate limited by the free Gemini tier. Please wait a moment and click Retry Request.',
+          'The free Gemini tier rate limit was reached. You can manually retry using the button below.'
+        );
+        setGemmaSignal('error', 'Rate limited');
+        return;
+      }
 
       if (!response.ok || resData.status === 'error') {
         const errType = resData.error_type || 'server_error';
         const errMsg = resData.error || `HTTP ${response.status}: Analysis failed`;
         const details = resData.details || errMsg;
+
+        if (hasCachedDossier && (payload.force_live || options.force_live)) {
+          loadDossierIntoDesk(state.currentDossier);
+          if (dom.stateLiveFailureBanner) {
+            dom.stateLiveFailureBanner.style.display = 'flex';
+            const cacheTime = state.currentDossier.cached_on || state.currentDossier.cached_at || 'earlier';
+            dom.liveFailureText.textContent = `Live run failed (${errMsg}). Showing cached result from ${cacheTime}.`;
+          }
+          return;
+        }
+
         showError(errType, errMsg, details);
         setGemmaSignal('error', errMsg.substring(0, 20));
         return;
@@ -960,7 +1121,7 @@
           const assessmentObj = resData.assessment || resData.data || {};
           const verifiedFacts = (assessmentObj.evidence || []).filter(e => e.verified).length;
           if (meta) {
-            meta.textContent = `@${resData.pr.author || 'author'} • ${verifiedFacts} verified facts`;
+            meta.textContent = `@${(resData.pr && resData.pr.author) || 'author'} • ${verifiedFacts} verified facts`;
           }
         } else {
           // Direct PR URL analyzed; prepend to queue
@@ -979,7 +1140,10 @@
           li.appendChild(header);
           li.appendChild(title);
           li.appendChild(meta);
-          li.addEventListener('click', () => loadDossierIntoDesk(resData));
+          li.addEventListener('click', () => {
+            if (state.isAnalyzing) return;
+            loadDossierIntoDesk(resData);
+          });
           if (dom.queueList) {
             const emptyItems = dom.queueList.querySelectorAll('.queue-empty-item');
             emptyItems.forEach(el => el.remove());
@@ -995,8 +1159,24 @@
       loadDossierIntoDesk(resData);
 
     } catch (err) {
-      showError('network_error', 'Connection to analysis endpoint failed.', String(err.message || err));
-      setGemmaSignal('error', 'Network error');
+      if (hasCachedDossier && (payload.force_live || options.force_live)) {
+        loadDossierIntoDesk(state.currentDossier);
+        if (dom.stateLiveFailureBanner) {
+          dom.stateLiveFailureBanner.style.display = 'flex';
+          const cacheTime = state.currentDossier.cached_on || state.currentDossier.cached_at || 'earlier';
+          dom.liveFailureText.textContent = `Live run failed (${String(err.message || err)}). Showing cached result from ${cacheTime}.`;
+        }
+      } else {
+        showError('network_error', 'Connection to analysis endpoint failed.', String(err.message || err));
+        setGemmaSignal('error', 'Network error');
+      }
+    } finally {
+      if (!state.loadingTimer) {
+        state.isAnalyzing = false;
+        if (dom.btnAnalyze) dom.btnAnalyze.disabled = false;
+        if (dom.btnRerunLive) dom.btnRerunLive.disabled = false;
+        if (dom.btnErrorRetry) dom.btnErrorRetry.disabled = false;
+      }
     }
   }
 
@@ -1070,6 +1250,7 @@
     // Form submission & buttons
     if (dom.btnAnalyze) {
       dom.btnAnalyze.addEventListener('click', () => {
+        if (state.isAnalyzing) return;
         handleInputSubmit(dom.prUrlInput.value);
       });
     }
@@ -1077,6 +1258,7 @@
     if (dom.prUrlInput) {
       dom.prUrlInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
+          if (state.isAnalyzing) return;
           handleInputSubmit(dom.prUrlInput.value);
         }
       });
@@ -1084,12 +1266,18 @@
 
     if (dom.btnErrorRetry) {
       dom.btnErrorRetry.addEventListener('click', () => {
-        handleInputSubmit(dom.prUrlInput.value);
+        if (state.isAnalyzing) return;
+        if (state.lastAnalyzeTarget) {
+          analyzePullRequest(state.lastAnalyzeTarget);
+        } else {
+          handleInputSubmit(dom.prUrlInput.value);
+        }
       });
     }
 
     if (dom.btnRerunLive) {
       dom.btnRerunLive.addEventListener('click', () => {
+        if (state.isAnalyzing) return;
         if (state.currentPR) {
           const pr = state.currentPR;
           const repo = (pr.owner && pr.repo) ? `${pr.owner}/${pr.repo}` : state.currentRepo;
@@ -1099,8 +1287,16 @@
               repo: repo,
               number: number,
               force_live: true
-            });
+            }, { force_live: true });
           }
+        }
+      });
+    }
+
+    if (dom.btnDismissLiveFailure) {
+      dom.btnDismissLiveFailure.addEventListener('click', () => {
+        if (dom.stateLiveFailureBanner) {
+          dom.stateLiveFailureBanner.style.display = 'none';
         }
       });
     }

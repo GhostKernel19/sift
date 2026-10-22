@@ -35,6 +35,7 @@ from services.gemma_assessor import (
     construct_assessment_prompt,
     extract_balanced_json,
     is_error_assessment,
+    parse_retry_delay,
 )
 
 
@@ -415,6 +416,61 @@ class TestGemmaAssessor(unittest.TestCase):
         prompt = construct_assessment_prompt(first_time_packet)
         self.assertIn("ZERO CONTRIBUTOR-QUALITY BIAS", prompt)
         self.assertIn("FIRST_TIME_CONTRIBUTOR", prompt)
+
+    # 16. Parse retry delay logic
+    def test_parse_retry_delay_from_header(self):
+        headers = {"Retry-After": "25"}
+        delay = parse_retry_delay("", headers)
+        self.assertEqual(delay, 25)
+
+    def test_parse_retry_delay_from_json_details(self):
+        raw_json = json.dumps({
+            "error": {
+                "code": 429,
+                "message": "Resource exhausted",
+                "details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "18s"}],
+            }
+        })
+        delay = parse_retry_delay(raw_json)
+        self.assertEqual(delay, 18)
+
+    def test_parse_retry_delay_fallback(self):
+        delay = parse_retry_delay("Some unknown error")
+        self.assertEqual(delay, 15)
+
+    # 17. 429 status code returns rate_limit error_type with retry_delay
+    @patch("requests.post")
+    def test_429_returns_rate_limit_error(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.ok = False
+        mock_resp.status_code = 429
+        mock_resp.headers = {"Retry-After": "20"}
+        mock_resp.text = json.dumps({"error": {"message": "Resource exhausted"}})
+        mock_post.return_value = mock_resp
+
+        result = assess(self.sample_packet, api_key="test_key")
+        self.assertTrue(is_error_assessment(result))
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["error_type"], "rate_limit")
+        self.assertEqual(result["retry_delay"], 20)
+
+    # 18. Diff capping at 20,000 characters
+    def test_diff_capped_at_20000_chars(self):
+        huge_diff = "+\n" * 15000  # 30,000 chars
+        packet = dict(self.sample_packet, prepared_diff=huge_diff)
+        prompt = construct_assessment_prompt(packet)
+        self.assertIn("[Diff truncated: exceeded 20,000 characters limit.]", prompt)
+
+    # 19. Contributing guidance capped at 3,000 characters
+    def test_contributing_guidance_capped_at_3000_chars(self):
+        huge_guidance = "Rule " * 1000  # 5,000 chars
+        packet = dict(
+            self.sample_packet,
+            contributing_guidance={"status": "present", "text": huge_guidance},
+        )
+        prompt = construct_assessment_prompt(packet)
+        self.assertIn("=== CONTRIBUTING GUIDANCE ===", prompt)
+        self.assertIn("[CONTRIBUTING guidance truncated to 3,000 characters limit.]", prompt)
 
 
 if __name__ == "__main__":

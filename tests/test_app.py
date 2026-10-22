@@ -372,3 +372,42 @@ def test_analyze_invalid_model_output(
     data = response.get_json()
     assert data["status"] == "error"
     assert data["error_type"] == "invalid_model_output"
+
+
+@patch("app.assess")
+@patch("app.fetch_contributing_guidance")
+@patch("app.fetch_pr_comments")
+@patch("app.fetch_pr_files")
+@patch("app.fetch_pr_diff")
+@patch("app.fetch_pr_details")
+def test_analyze_rate_limit_handling(
+    mock_details,
+    mock_diff,
+    mock_files,
+    mock_comments,
+    mock_guidance,
+    mock_assess,
+    mock_pr_data,
+    client,
+):
+    mock_details.return_value = mock_pr_data["pr_details"]
+    mock_diff.return_value = mock_pr_data["pr_diff"]
+    mock_files.return_value = mock_pr_data["pr_files"]
+    mock_comments.return_value = mock_pr_data["pr_comments"]
+    mock_guidance.return_value = mock_pr_data["guidance"]
+
+    mock_assess.return_value = {
+        "status": "error",
+        "error_type": "rate_limit",
+        "error": "Rate limited by the free Gemini tier.",
+        "details": "Quota exceeded",
+        "retry_delay": 18,
+    }
+
+    response = client.post("/api/analyze", json={"repo": "pallets/flask", "number": 42})
+    assert response.status_code == 429
+    data = response.get_json()
+    assert data["status"] == "error"
+    assert data["error_type"] == "rate_limit"
+    assert data["retry_delay"] == 18
+    assert "Rate limited by the free Gemini tier." in data["error"]
