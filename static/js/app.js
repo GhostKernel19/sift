@@ -135,6 +135,7 @@
     // Header
     modeIndicator: document.getElementById('mode-indicator'),
     modeIndicatorText: document.getElementById('mode-indicator-text'),
+    healthIndicator: document.getElementById('health-indicator'),
     healthDot: document.getElementById('health-dot'),
     healthLabel: document.getElementById('health-label'),
 
@@ -217,26 +218,58 @@
   }
 
   // ============================================================================
-  // Health & Model Status Check
+  // Health & Model Status Check (Real Signal Tracking)
   // ============================================================================
+  let currentGemmaModel = 'gemma-4-26b-a4b-it';
+
+  function getModelDisplayName(model) {
+    if (!model) return 'Gemma 4 (26b)';
+    if (model.includes('26b')) return 'Gemma 4 (26b)';
+    if (model.includes('31b')) return 'Gemma 4 (31b)';
+    return model;
+  }
+
+  function setGemmaSignal(status, detail) {
+    const modelName = getModelDisplayName(currentGemmaModel);
+    if (!dom.healthDot || !dom.healthLabel) return;
+    if (status === 'online') {
+      dom.healthDot.className = 'health-dot dot-online';
+      dom.healthLabel.textContent = `${modelName}: Online`;
+      if (dom.healthIndicator) dom.healthIndicator.setAttribute('title', `Live Gemma inference succeeded (${currentGemmaModel})`);
+    } else if (status === 'unchecked') {
+      dom.healthDot.className = 'health-dot dot-unchecked';
+      dom.healthLabel.textContent = `${modelName}: Unchecked`;
+      if (dom.healthIndicator) dom.healthIndicator.setAttribute('title', `Backend ready; no live Gemma inference evaluated yet (${currentGemmaModel})`);
+    } else if (status === 'unconfigured') {
+      dom.healthDot.className = 'health-dot dot-offline';
+      dom.healthLabel.textContent = `${modelName}: Unconfigured`;
+      if (dom.healthIndicator) dom.healthIndicator.setAttribute('title', 'GEMINI_API_KEY environment variable is not configured');
+    } else if (status === 'error') {
+      dom.healthDot.className = 'health-dot dot-offline';
+      const errorMsg = detail ? `Error (${detail})` : 'Call Failed';
+      dom.healthLabel.textContent = `${modelName}: ${errorMsg}`;
+      if (dom.healthIndicator) dom.healthIndicator.setAttribute('title', `Last Gemma call failed: ${detail || 'Unknown error'}`);
+    }
+  }
+
   async function checkBackendHealth() {
     try {
       const response = await fetch('/api/health');
       if (response.ok) {
         const data = await response.json();
-        dom.healthDot.className = 'health-dot dot-online';
-        dom.healthLabel.textContent = `Gemma 4: Online (${data.model || '26b'})`;
+        if (data.model) currentGemmaModel = data.model;
         if (!data.gemini_configured) {
           dom.stateModelUnavailable.style.display = 'flex';
+          setGemmaSignal('unconfigured');
+        } else {
+          // Key is set, but no live inference call has been made yet -> REAL SIGNAL: Unchecked
+          setGemmaSignal('unchecked');
         }
       } else {
-        dom.healthDot.className = 'health-dot dot-offline';
-        dom.healthLabel.textContent = 'Gemma 4: Offline (API unready)';
+        setGemmaSignal('error', `HTTP ${response.status}`);
       }
     } catch {
-      // Backend not yet running or mock mode
-      dom.healthDot.className = 'health-dot';
-      dom.healthLabel.textContent = 'Gemma 4: Local Standby';
+      setGemmaSignal('error', 'API Offline');
     }
   }
 
@@ -344,18 +377,13 @@
     dom.priorityNumericText.textContent = PRIORITY_LABELS[safeScore] || `${safeScore} / 5`;
     dom.priorityProgressBar.setAttribute('aria-valuenow', String(safeScore));
 
-    const segments = dom.priorityProgressBar.querySelectorAll('.priority-segment');
-    segments.forEach((seg, idx) => {
-      const segVal = idx + 1;
-      seg.className = 'priority-segment';
-      if (segVal <= safeScore) {
-        if (safeScore >= 5) {
-          seg.classList.add('active-critical');
-        } else if (safeScore >= 4) {
-          seg.classList.add('active-high');
-        } else {
-          seg.classList.add('active');
-        }
+    const dots = dom.priorityProgressBar.querySelectorAll('.priority-dot, .priority-segment');
+    dots.forEach((dot, idx) => {
+      const dotVal = idx + 1;
+      if (dotVal <= safeScore) {
+        dot.classList.add('active');
+      } else {
+        dot.classList.remove('active');
       }
     });
   }
@@ -407,7 +435,10 @@
       if (dom.statePartialDataBanner) {
         dom.statePartialDataBanner.style.display = 'flex';
         dom.partialDataTitle.textContent = 'QUARANTINE NOTICE: NOT FOUND IN SOURCE';
-        dom.partialDataText.textContent = `The excerpt "${quote}" failed in-code substring verification. It is quarantined and excluded from authentic facts.`;
+        const evidenceList = (state.currentAssessment && state.currentAssessment.evidence) || [];
+        const unverifiedCount = evidenceList.filter(e => !e.verified).length || 1;
+        const totalCount = evidenceList.length || 1;
+        dom.partialDataText.textContent = `${unverifiedCount} of ${totalCount} quotes could not be verified in the source. "${quote}" failed in-code substring verification.`;
         dom.statePartialDataBanner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
       setTimeout(() => {
@@ -467,9 +498,13 @@
   function renderAssessment(assessment) {
     state.currentAssessment = assessment;
 
-    // 1. Recommendation Badge & Text
+    // 1. Recommendation Badge & Verdict Block Background
     const recKey = (assessment.recommendation || 'review').toLowerCase();
-    dom.badgeRecommendation.className = `rec-badge rec-${recKey}`;
+    const cardRecommendation = document.getElementById('card-recommendation');
+    if (cardRecommendation) {
+      cardRecommendation.className = `assessment-card verdict-block verdict-${recKey}`;
+    }
+    dom.badgeRecommendation.className = `verdict-label rec-${recKey}`;
     dom.badgeRecommendation.textContent = recKey.replace(/_/g, ' ').toUpperCase();
     dom.recExplanationText.textContent = REC_DESCRIPTIONS[recKey] || REC_DESCRIPTIONS.review;
 
@@ -631,7 +666,9 @@
     if (dom.prAssocVal) {
       dom.prAssocVal.textContent = (pr.author_association || 'CONTRIBUTOR').replace(/_/g, ' ');
     }
-    dom.prStateVal.textContent = (pr.state || 'OPEN').toUpperCase();
+    const rawState = (pr.state || 'open').toLowerCase();
+    dom.prStateVal.textContent = rawState.toUpperCase();
+    dom.prStateVal.className = `meta-value state-tag state-${rawState}`;
 
     clearElement(dom.prDeltaVal);
     const addSpan = createEl('span', 'stat-add', `+${pr.additions || 0}`);
@@ -682,28 +719,27 @@
     // 7. Assessment Section
     renderAssessment(dossierData.assessment || {});
 
-    // 8. Partial-Data State Checking
+    // 8. Partial-Data & Quarantine State Checking (Real Counts)
+    const evidenceList = (dossierData.assessment && dossierData.assessment.evidence) || [];
+    const unverifiedQuotes = evidenceList.filter(e => !e.verified).length;
+    const totalQuotes = evidenceList.length;
+
     const isTruncated = Boolean(
       dossierData.diff_truncated ||
       (dossierData.diff_summary && dossierData.diff_summary.truncated) ||
       (dossierData.diff && dossierData.diff.includes('... [Diff truncated'))
     );
-    const hasQuarantinedQuotes = Boolean(
-      dossierData.assessment &&
-      dossierData.assessment.evidence &&
-      dossierData.assessment.evidence.some(e => !e.verified)
-    );
 
-    if (isTruncated || dossierData.isPartial) {
+    if (unverifiedQuotes > 0) {
+      dom.diffTruncationBadge.style.display = isTruncated ? 'inline-block' : 'none';
+      dom.statePartialDataBanner.style.display = 'flex';
+      dom.partialDataTitle.textContent = 'Evidence Quarantine Notice';
+      dom.partialDataText.textContent = `${unverifiedQuotes} of ${totalQuotes} quotes could not be verified in the source.`;
+    } else if (isTruncated || dossierData.isPartial) {
       dom.diffTruncationBadge.style.display = 'inline-block';
       dom.statePartialDataBanner.style.display = 'flex';
       dom.partialDataTitle.textContent = 'Partial Data Detected: Unified Diff Truncated';
       dom.partialDataText.textContent = 'The pull request diff exceeded the safe line limit (1,500 lines) and was truncated. Code quote verification is strictly scoped to the retrieved text.';
-    } else if (hasQuarantinedQuotes) {
-      dom.diffTruncationBadge.style.display = 'none';
-      dom.statePartialDataBanner.style.display = 'flex';
-      dom.partialDataTitle.textContent = 'Evidence Quarantine Notice';
-      dom.partialDataText.textContent = 'One or more claims in this assessment failed in-code quote substring verification and were quarantined. They are never presented as verified facts.';
     } else {
       dom.diffTruncationBadge.style.display = 'none';
       dom.statePartialDataBanner.style.display = 'none';
@@ -859,6 +895,10 @@
         if (s) s.className = 'timeline-step step-done';
       });
 
+      // Mark real Gemma inference call succeeded
+      if (resData.model) currentGemmaModel = resData.model;
+      setGemmaSignal('online');
+
       // Successful live response
       const liveDossier = {
         isSample: false,
@@ -877,6 +917,7 @@
 
     } catch (err) {
       showViewState('error');
+      setGemmaSignal('error', err.message ? err.message.substring(0, 16) : 'Failed');
       dom.errorMessageText.textContent = err.message || 'Unable to retrieve and assess pull request.';
       dom.errorDetailsContainer.style.display = 'block';
       dom.errorDetailsCode.textContent = String(err.stack || err);
@@ -998,6 +1039,21 @@
 
     dom.btnCopyDraft.addEventListener('click', copyResponseDraft);
     dom.btnResetDraft.addEventListener('click', resetResponseDraft);
+
+    // Expand / collapse suggested-reply draft
+    const btnToggleExpand = document.getElementById('btn-toggle-expand-draft');
+    const cardReply = document.getElementById('card-reply-draft');
+    if (btnToggleExpand && cardReply) {
+      btnToggleExpand.addEventListener('click', () => {
+        const isExpanded = cardReply.classList.toggle('is-expanded');
+        btnToggleExpand.textContent = isExpanded ? 'Collapse' : 'Expand';
+        if (isExpanded) {
+          dom.replyDraftTextarea.setAttribute('rows', '6');
+        } else {
+          dom.replyDraftTextarea.setAttribute('rows', '3');
+        }
+      });
+    }
 
     // Escape clears evidence highlight
     document.addEventListener('keydown', (e) => {

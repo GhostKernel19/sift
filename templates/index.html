@@ -43,7 +43,7 @@
           <div class="hero-badge">EVIDENCE-FIRST PULL REQUEST TRIAGE</div>
           <h2 class="hero-title">Triage pull requests with receipts.</h2>
           <p class="hero-subtitle">
-            A fast, objective triage assistant for open-source maintainers. Gemma 4 reads unified diffs, extracts verifiable facts, and drafts replies. You decide what merges.
+            A fast, evidence-based triage assistant for open-source maintainers. Gemma 4 reads unified diffs, extracts verifiable facts, and drafts replies. You decide what merges.
           </p>
           <div class="hero-cta-row">
             <button type="button" id="btn-landing-open" class="btn btn-primary btn-lg">
@@ -64,21 +64,21 @@
             <h3 class="landing-section-title">How It Works</h3>
           </div>
           <div class="steps-grid">
-            <div class="step-card">
+            <div class="step-card step-card-sand">
               <div class="step-badge">STEP 1</div>
               <h4 class="step-title">Fetch facts</h4>
               <p class="step-desc">
                 Retrieves raw unified diffs, file lists, and authentic PR context directly from GitHub without profiling contributor identity.
               </p>
             </div>
-            <div class="step-card">
+            <div class="step-card step-card-lilac">
               <div class="step-badge">STEP 2</div>
               <h4 class="step-title">Gemma reads the evidence</h4>
               <p class="step-desc">
                 Gemma 4 synthesizes findings and extracts verbatim quotes. In-code substring verification audits quotes against raw diffs.
               </p>
             </div>
-            <div class="step-card">
+            <div class="step-card step-card-mint">
               <div class="step-badge">STEP 3</div>
               <h4 class="step-title">You decide</h4>
               <p class="step-desc">
@@ -196,11 +196,11 @@
               spellcheck="false"
               aria-label="GitHub pull request identifier or URL"
             >
-            <button type="button" id="btn-analyze" class="btn btn-primary">
+            <button type="button" id="btn-analyze" class="btn btn-primary btn-analyze-top">
               <span aria-hidden="true">&#128269;</span>
               <span class="btn-text">Analyze</span>
             </button>
-            <button type="button" id="btn-load-sample" class="btn btn-secondary btn-sm" title="Load authentic verified sample PR">
+            <button type="button" id="btn-load-sample" class="btn btn-secondary btn-sm btn-sample-top" title="Load authentic verified sample PR">
               <span>Sample PR</span>
             </button>
           </div>
@@ -326,29 +326,29 @@
             <button type="button" class="btn btn-secondary btn-sm" id="btn-dismiss-alert">Dismiss</button>
           </div>
 
-          <!-- State: Partial Data / Quarantine Notice Banner -->
-          <div id="state-partial-data-banner" class="desk-alert-banner alert-amber" style="display: none;">
+          <!-- State: Partial Data / Quarantine Notice Banner (Compact Sun-Colored Strip) -->
+          <div id="state-partial-data-banner" class="desk-alert-banner alert-sun quarantine-strip" style="display: none;">
             <div class="alert-icon" aria-hidden="true">&#9888;</div>
             <div class="alert-content">
-              <h4 class="alert-title" id="partial-data-title">Partial Data Investigation</h4>
+              <h4 class="alert-title" id="partial-data-title">Quarantine Notice</h4>
               <p class="alert-text" id="partial-data-text">
-                Diff exceeded safe retrieval limit (1,500 lines) and was truncated. Unverified claims remain quarantined.
+                1 of 4 quotes could not be verified in the source.
               </p>
             </div>
           </div>
 
           <!-- State: Content (Center Dossier with TABS) -->
           <div id="state-content" class="desk-tabs-container">
-            <!-- Dossier Tab Bar -->
+            <!-- Dossier Tab Bar (Different active accent color per tab) -->
             <div class="dossier-tab-bar" role="tablist" aria-label="PR Dossier Sections">
-              <button type="button" class="dossier-tab active" id="tab-btn-overview" role="tab" aria-selected="true" data-tab="tab-overview">
+              <button type="button" class="dossier-tab dossier-tab-overview active" id="tab-btn-overview" role="tab" aria-selected="true" data-tab="tab-overview">
                 <span>Overview</span>
               </button>
-              <button type="button" class="dossier-tab" id="tab-btn-files" role="tab" aria-selected="false" data-tab="tab-files">
+              <button type="button" class="dossier-tab dossier-tab-files" id="tab-btn-files" role="tab" aria-selected="false" data-tab="tab-files">
                 <span>Files</span>
                 <span class="tab-badge" id="tab-file-count-badge">1</span>
               </button>
-              <button type="button" class="dossier-tab" id="tab-btn-diff" role="tab" aria-selected="false" data-tab="tab-diff">
+              <button type="button" class="dossier-tab dossier-tab-diff" id="tab-btn-diff" role="tab" aria-selected="false" data-tab="tab-diff">
                 <span>Diff Excerpts</span>
               </button>
             </div>
@@ -367,15 +367,15 @@
                   <h2 class="pr-headline" id="pr-headline-text">Loading title…</h2>
 
                   <div class="pr-meta-grid">
-                    <div class="meta-field">
+                    <div class="meta-field stat-tile">
                       <span class="meta-label">Author</span>
                       <span class="meta-value author-tag" id="pr-author-val">@author</span>
                     </div>
-                    <div class="meta-field">
+                    <div class="meta-field stat-tile">
                       <span class="meta-label">Status</span>
                       <span class="meta-value state-tag" id="pr-state-val">OPEN</span>
                     </div>
-                    <div class="meta-field">
+                    <div class="meta-field stat-tile">
                       <span class="meta-label">Code Delta</span>
                       <span class="meta-value diff-stat-val" id="pr-delta-val">
                         <span class="stat-add">+18</span> / <span class="stat-del">-4</span> (1 file)
@@ -448,32 +448,32 @@
 
           <div class="assessment-scroll-area" id="assessment-scroll-area">
 
-            <!-- 1. Executive Recommendation & Priority Card -->
-            <section class="assessment-card" id="card-recommendation">
+            <!-- 1. Executive Recommendation & Priority Card (Verdict Block) -->
+            <section class="assessment-card verdict-block verdict-review" id="card-recommendation">
               <div class="rec-header-row">
                 <span class="assessment-section-label">RECOMMENDATION</span>
                 <span class="confidence-pill" id="badge-confidence">CONFIDENCE: HIGH</span>
               </div>
 
-              <div class="recommendation-stamp-box">
-                <div class="rec-badge" id="badge-recommendation">REVIEW</div>
+              <div class="verdict-main">
+                <div class="verdict-label" id="badge-recommendation">REVIEW</div>
                 <p class="rec-explanation" id="rec-explanation-text">
                   Changes appear focused and sound. Ready for maintainer code review.
                 </p>
               </div>
 
-              <!-- Priority Meter -->
+              <!-- Priority Meter: 5 Dots -->
               <div class="priority-meter-section">
                 <div class="priority-meter-label-row">
                   <span class="priority-label">Priority Score</span>
                   <span class="priority-numeric" id="priority-numeric-text">3 / 5 &bull; Moderate</span>
                 </div>
-                <div class="priority-bar-container" role="progressbar" id="priority-progress-bar" aria-valuenow="3" aria-valuemin="1" aria-valuemax="5">
-                  <div class="priority-segment segment-1 active">1</div>
-                  <div class="priority-segment segment-2 active">2</div>
-                  <div class="priority-segment segment-3 active">3</div>
-                  <div class="priority-segment segment-4">4</div>
-                  <div class="priority-segment segment-5">5</div>
+                <div class="priority-dots-container" role="progressbar" id="priority-progress-bar" aria-valuenow="3" aria-valuemin="1" aria-valuemax="5" aria-label="Priority score 1 to 5">
+                  <span class="priority-dot dot-1 active" aria-hidden="true"></span>
+                  <span class="priority-dot dot-2 active" aria-hidden="true"></span>
+                  <span class="priority-dot dot-3 active" aria-hidden="true"></span>
+                  <span class="priority-dot dot-4" aria-hidden="true"></span>
+                  <span class="priority-dot dot-5" aria-hidden="true"></span>
                 </div>
                 <p class="priority-note" id="priority-note-text">
                   Score based on architectural impact, never contributor identity.
@@ -527,47 +527,50 @@
               </p>
             </section>
 
-            <!-- 6. Maintainer Reply Draft Section -->
-            <section class="assessment-card reply-draft-card" id="card-reply-draft">
-              <div class="reply-draft-header">
-                <div>
-                  <span class="assessment-section-label">SUGGESTED RESPONSE DRAFT</span>
-                  <h3 class="reply-draft-title">Maintainer Review Note</h3>
-                </div>
-                <span class="hitl-tag">HUMAN DECIDES</span>
-              </div>
-
-              <p class="hitl-notice">
-                Sift <strong>never</strong> posts comments to GitHub. Copy to clipboard to edit and send.
-              </p>
-
-              <div class="textarea-wrapper">
-                <textarea 
-                  id="reply-draft-textarea" 
-                  class="reply-textarea" 
-                  rows="4" 
-                  aria-label="Editable maintainer response draft"
-                  spellcheck="true"
-                ></textarea>
-              </div>
-
-              <div class="reply-actions-row">
-                <button type="button" id="btn-copy-draft" class="btn btn-primary btn-copy">
-                  <span class="btn-icon" aria-hidden="true">&#128203;</span>
-                  <span id="btn-copy-draft-text">Copy Response Draft</span>
-                </button>
-                <button type="button" id="btn-reset-draft" class="btn btn-secondary btn-sm" title="Reset to original suggestion">
-                  Reset
-                </button>
-              </div>
-
-              <div id="copy-toast" class="copy-toast" role="status" aria-live="polite" style="display: none;">
-                <span class="toast-icon" aria-hidden="true">&check;</span>
-                <span>Copied draft to clipboard! Paste into your GitHub PR review.</span>
-              </div>
-            </section>
-
           </div>
+
+          <!-- 6. Maintainer Reply Draft Section (Pinned Sticky at Bottom of Column) -->
+          <section class="assessment-card reply-draft-card sticky-reply-card" id="card-reply-draft">
+            <div class="reply-draft-header">
+              <div>
+                <span class="assessment-section-label">SUGGESTED RESPONSE DRAFT</span>
+                <h3 class="reply-draft-title">Maintainer Review Note</h3>
+              </div>
+              <span class="hitl-tag">HUMAN DECIDES</span>
+            </div>
+
+            <p class="hitl-notice">
+              Sift <strong>never</strong> posts comments to GitHub. Copy to clipboard to edit and send.
+            </p>
+
+            <div class="textarea-wrapper">
+              <textarea 
+                id="reply-draft-textarea" 
+                class="reply-textarea" 
+                rows="3" 
+                aria-label="Editable maintainer response draft"
+                spellcheck="true"
+              ></textarea>
+            </div>
+
+            <div class="reply-actions-row">
+              <button type="button" id="btn-copy-draft" class="btn btn-primary btn-copy">
+                <span class="btn-icon" aria-hidden="true">&#128203;</span>
+                <span id="btn-copy-draft-text">Copy Response Draft</span>
+              </button>
+              <button type="button" id="btn-toggle-expand-draft" class="btn btn-secondary btn-sm" title="Expand or collapse draft editor">
+                Expand
+              </button>
+              <button type="button" id="btn-reset-draft" class="btn btn-secondary btn-sm" title="Reset to original suggestion">
+                Reset
+              </button>
+            </div>
+
+            <div id="copy-toast" class="copy-toast" role="status" aria-live="polite" style="display: none;">
+              <span class="toast-icon" aria-hidden="true">&check;</span>
+              <span>Copied draft to clipboard! Paste into your GitHub PR review.</span>
+            </div>
+          </section>
         </aside>
 
       </div>
