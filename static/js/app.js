@@ -386,9 +386,15 @@
     // If unverified/quarantined, explain why
     if (!item.verified) {
       dom.dossierSourceTag.textContent = 'QUARANTINE ALERT: Quote unverified in source';
+      if (dom.statePartialDataBanner) {
+        dom.statePartialDataBanner.style.display = 'flex';
+        dom.partialDataTitle.textContent = 'QUARANTINE NOTICE: NOT FOUND IN SOURCE';
+        dom.partialDataText.textContent = `The excerpt "${quote}" failed in-code substring verification. It is quarantined and excluded from authentic facts.`;
+        dom.statePartialDataBanner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
       setTimeout(() => {
         dom.dossierSourceTag.textContent = state.isSample ? 'DATA SOURCE: SAMPLE PACKET' : 'DATA SOURCE: GITHUB LIVE';
-      }, 4000);
+      }, 5000);
       return;
     }
 
@@ -475,10 +481,10 @@
       const statusBadge = createEl('span', 'verification-status-badge');
       if (item.verified) {
         statusBadge.classList.add('status-verified');
-        statusBadge.textContent = '✓ Verified in source';
+        statusBadge.textContent = '✓ VERIFIED IN SOURCE';
       } else {
         statusBadge.classList.add('status-quarantined');
-        statusBadge.textContent = '⚠ Not found in source (Quarantined)';
+        statusBadge.textContent = '⚠ NOT FOUND IN SOURCE';
       }
 
       header.appendChild(srcTag);
