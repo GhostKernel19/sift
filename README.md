@@ -83,6 +83,14 @@ Access the dashboard in your browser:
 http://localhost:5000
 ```
 
+### API Endpoints
+- `GET /`: Maintainer Evidence Desk UI (`templates/index.html`).
+- `GET /api/health`: Health status, Gemma 4 model info, and API key configuration check.
+- `POST /api/prs`: Fetches open pull requests for queue metadata: `{ "repo": "owner/repo" }`.
+- `POST /api/analyze` & `POST /api/assess`: Analyzes a single pull request on demand: `{ "repo": "owner/repo", "number": 123 }` or `{ "pr_url": "https://github.com/owner/repo/pull/123" }`.
+  - Auditable Caching: Analyses are cached in memory and in `demo_cache/`. Cache hits are labeled `"cached on <time>"`.
+  - In-Code Quote Verification: Every claim quote is verified as a genuine substring of authentic retrieved source text.
+
 ---
 
 ## Running Tests
@@ -90,13 +98,13 @@ http://localhost:5000
 Execute the test suite with pytest:
 ```powershell
 # Run all tests
-pytest
+pytest -q
 
 # Run tests with detailed output
 pytest -v
 
-# Run assessment schema unit tests
-pytest tests/test_assessment_schema.py
+# Run integration tests for Flask routes & cache
+pytest tests/test_app.py
 ```
 
 ---
@@ -110,6 +118,7 @@ sift/
 ├── requirements.txt                   # Locked dependencies
 ├── .env.example                       # Environment configuration template
 ├── verify_gemma.py                    # Verified Gemma 4 REST connection test
+├── demo_cache/                        # Persisted PR assessments (JSON cache)
 ├── services/
 │   ├── assessment_schema.py           # Assessment contract & quote verification
 │   ├── github_client.py               # GitHub REST API client
