@@ -363,6 +363,24 @@
   // ============================================================================
   // Evidence Rail Highlighting Signature Interaction
   // ============================================================================
+  // Dossier Tabs Switching
+  // ============================================================================
+  function switchDossierTab(tabName) {
+    const tabBtns = document.querySelectorAll('.dossier-tab');
+    tabBtns.forEach(btn => {
+      const isActive = btn.dataset.tab === tabName;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+    const panels = document.querySelectorAll('.dossier-tab-panel');
+    panels.forEach(p => {
+      p.style.display = p.id === tabName ? 'block' : 'none';
+    });
+  }
+
+  // ============================================================================
+  // Evidence Rail Highlighting Signature Interaction
+  // ============================================================================
   function clearAllHighlights() {
     const highlighted = document.querySelectorAll('.highlight-target, .highlight-target-box');
     highlighted.forEach(el => {
@@ -402,6 +420,7 @@
 
     // 1. Search in Diff Lines if source is 'diff' or general
     if (source.includes('diff') || source === 'all') {
+      switchDossierTab('tab-diff');
       const diffLines = dom.diffCodePanel.querySelectorAll('.diff-line');
       for (const line of diffLines) {
         const text = line.dataset.lineContent || '';
@@ -417,6 +436,7 @@
 
     // 2. Search in PR Body if source is 'body'
     if (!matchFound && (source.includes('body') || source.includes('description'))) {
+      switchDossierTab('tab-overview');
       const bodyText = dom.prBodyContainer.textContent || '';
       if (quote && bodyText.includes(quote)) {
         dom.prBodyContainer.classList.add('highlight-target-box');
@@ -427,6 +447,7 @@
 
     // 3. Fallback: Search all visible text in paper panel
     if (!matchFound) {
+      switchDossierTab('tab-diff');
       const diffLines = dom.diffCodePanel.querySelectorAll('.diff-line');
       for (const line of diffLines) {
         const text = line.dataset.lineContent || '';
@@ -473,8 +494,9 @@
       card.tabIndex = 0;
       card.setAttribute('role', 'button');
       card.setAttribute('aria-label', `Evidence item ${index + 1}: ${item.claim}`);
+      card.setAttribute('aria-expanded', 'false');
 
-      // Header: Source Tag + Verification Status Badge (Text + Icon)
+      // Header: Source Tag + Verification Status Badge (Text + Stamp) + Expand Toggle
       const header = createEl('div', 'evidence-card-header');
       const srcTag = createEl('span', 'evidence-source-tag', `[${item.source || 'source'}]`);
 
@@ -487,11 +509,18 @@
         statusBadge.textContent = 'NOT FOUND IN SOURCE';
       }
 
+      const expandToggle = createEl('span', 'evidence-expand-indicator', '+');
+
       header.appendChild(srcTag);
       header.appendChild(statusBadge);
+      header.appendChild(expandToggle);
 
-      // Claim Text
+      // Claim Text (always visible)
       const claim = createEl('p', 'evidence-claim-text', item.claim || 'Unspecified claim');
+
+      // Collapsible details container (collapsed by default)
+      const details = createEl('div', 'evidence-card-details');
+      details.style.display = 'none';
 
       // Exact Quote Box
       const quoteBox = createEl('div', 'evidence-quote-snippet', `“${item.quote || ''}”`);
@@ -499,22 +528,39 @@
       // Inspection Hint
       const hint = createEl('div', 'evidence-inspect-hint');
       hint.textContent = item.verified
-        ? '↘ Click to locate authentic excerpt in source'
+        ? '↘ Locating authentic excerpt in dossier'
         : '⛔ Quarantined: Non-verifiable statement cannot be cited as fact';
+
+      details.appendChild(quoteBox);
+      details.appendChild(hint);
 
       card.appendChild(header);
       card.appendChild(claim);
-      card.appendChild(quoteBox);
-      card.appendChild(hint);
+      card.appendChild(details);
 
-      // Click & Keyboard interactions
-      card.addEventListener('click', () => {
-        highlightEvidenceInDesk(item, card);
-      });
+      // Toggle click handler (collapsible on click)
+      function toggleEvidence() {
+        const isCurrentlyExpanded = details.style.display === 'block';
+        if (isCurrentlyExpanded) {
+          details.style.display = 'none';
+          card.classList.remove('active-evidence-card');
+          card.setAttribute('aria-expanded', 'false');
+          expandToggle.textContent = '+';
+          clearAllHighlights();
+        } else {
+          details.style.display = 'block';
+          card.classList.add('active-evidence-card');
+          card.setAttribute('aria-expanded', 'true');
+          expandToggle.textContent = '−';
+          highlightEvidenceInDesk(item, card);
+        }
+      }
+
+      card.addEventListener('click', toggleEvidence);
       card.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          highlightEvidenceInDesk(item, card);
+          toggleEvidence();
         }
       });
 
@@ -604,6 +650,10 @@
     clearElement(dom.changedFilesList);
     const files = dossierData.files || [];
     dom.fileCountBadge.textContent = `${files.length || 1} file changed`;
+    const tabFileBadge = document.getElementById('tab-file-count-badge');
+    if (tabFileBadge) {
+      tabFileBadge.textContent = String(files.length || 1);
+    }
     if (files.length === 0) {
       const item = createEl('li', 'file-item');
       item.appendChild(createEl('span', 'file-path', 'requests/adapters.py'));
@@ -667,6 +717,7 @@
 
     // 10. Update Queue UI & Show Content
     updateQueueList(dossierData);
+    switchDossierTab('tab-overview');
     showViewState('content');
   }
 
@@ -749,7 +800,7 @@
     // Set UI to loading state
     showViewState('loading');
 
-    // Multi-step progress animation
+    // 4-step progress list: real progress tracking
     const steps = [
       document.getElementById('load-step-1'),
       document.getElementById('load-step-2'),
@@ -758,20 +809,9 @@
     ];
 
     steps.forEach(s => {
-      s.className = 'timeline-step';
+      if (s) s.className = 'timeline-step';
     });
-    steps[0].className = 'timeline-step step-done';
-    steps[1].className = 'timeline-step step-active';
-
-    const stepInterval = setInterval(() => {
-      if (steps[1].classList.contains('step-active')) {
-        steps[1].className = 'timeline-step step-done';
-        steps[2].className = 'timeline-step step-active';
-      } else if (steps[2].classList.contains('step-active')) {
-        steps[2].className = 'timeline-step step-done';
-        steps[3].className = 'timeline-step step-active';
-      }
-    }, 1200);
+    if (steps[0]) steps[0].className = 'timeline-step step-active';
 
     try {
       const payload = { pr_url: cleanInput };
@@ -796,8 +836,6 @@
         body: JSON.stringify(payload)
       });
 
-      clearInterval(stepInterval);
-
       if (!response.ok) {
         let errText = `HTTP Error ${response.status}: ${response.statusText}`;
         try {
@@ -816,6 +854,11 @@
         throw new Error(resData.error || 'Server reported assessment error');
       }
 
+      // Mark all progress steps completed when real response arrives
+      steps.forEach(s => {
+        if (s) s.className = 'timeline-step step-done';
+      });
+
       // Successful live response
       const liveDossier = {
         isSample: false,
@@ -833,7 +876,6 @@
       loadDossierIntoDesk(liveDossier);
 
     } catch (err) {
-      clearInterval(stepInterval);
       showViewState('error');
       dom.errorMessageText.textContent = err.message || 'Unable to retrieve and assess pull request.';
       dom.errorDetailsContainer.style.display = 'block';
@@ -879,6 +921,50 @@
   // Event Bindings & Initial Launch
   // ============================================================================
   function init() {
+    // View switching helper
+    function switchAppView(viewName) {
+      const landing = document.getElementById('view-landing');
+      const workspace = document.getElementById('view-workspace');
+      if (landing && workspace) {
+        landing.style.display = viewName === 'landing' ? 'block' : 'none';
+        workspace.style.display = viewName === 'workspace' ? 'flex' : 'none';
+      }
+    }
+
+    // Landing view navigation buttons
+    const btnLandingOpen = document.getElementById('btn-landing-open');
+    const btnLandingOpenNav = document.getElementById('btn-landing-open-nav');
+    if (btnLandingOpen) btnLandingOpen.addEventListener('click', () => switchAppView('workspace'));
+    if (btnLandingOpenNav) btnLandingOpenNav.addEventListener('click', () => switchAppView('workspace'));
+
+    const btnLandingSample = document.getElementById('btn-landing-sample');
+    const btnLandingSampleNav = document.getElementById('btn-landing-sample-nav');
+    if (btnLandingSample) {
+      btnLandingSample.addEventListener('click', () => {
+        switchAppView('workspace');
+        loadDossierIntoDesk(SAMPLE_PR_DATA);
+      });
+    }
+    if (btnLandingSampleNav) {
+      btnLandingSampleNav.addEventListener('click', () => {
+        switchAppView('workspace');
+        loadDossierIntoDesk(SAMPLE_PR_DATA);
+      });
+    }
+
+    // Workspace Home link
+    const btnNavHome = document.getElementById('btn-nav-home');
+    if (btnNavHome) btnNavHome.addEventListener('click', () => switchAppView('landing'));
+
+    // Dossier Tab switching event listeners
+    const tabBtns = document.querySelectorAll('.dossier-tab');
+    tabBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const tab = e.currentTarget.dataset.tab;
+        if (tab) switchDossierTab(tab);
+      });
+    });
+
     // Form submission & buttons
     dom.btnAnalyze.addEventListener('click', () => {
       analyzePullRequest(dom.prUrlInput.value);
@@ -923,8 +1009,11 @@
     // Check backend health
     checkBackendHealth();
 
-    // Default load: Load the authentic, verified Sample PR with clear SAMPLE label
+    // Default load: Load the authentic, verified Sample PR with clear SAMPLE label into desk
     loadDossierIntoDesk(SAMPLE_PR_DATA);
+
+    // Default view on first load: Landing view
+    switchAppView('landing');
   }
 
   // Execute on DOM ready

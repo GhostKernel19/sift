@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sift — Evidence Desk for Maintainers</title>
+  <title>SIFT — Evidence Desk for Maintainers</title>
   
-  <!-- Typography: Space Grotesk (Headings, bold), JetBrains Mono (PR numbers, paths, quotes, line counts) -->
+  <!-- Typography: Bricolage Grotesque (Headings), IBM Plex Mono (PR numbers, paths, quotes, stamps) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="/static/css/styles.css">
 </head>
@@ -16,428 +16,585 @@
   <!-- Application Shell -->
   <div class="desk-app">
 
-    <!-- Top Navigation & Desk Controls -->
-    <header class="desk-header" role="banner">
-      <div class="header-branding">
-        <div class="brand-mark" aria-hidden="true">
-          <span class="mark-symbol">§</span>
-        </div>
-        <div class="brand-titles">
-          <h1 class="brand-name">SIFT <span class="brand-tag">Evidence Desk</span></h1>
-          <p class="brand-credo">Code retrieves facts &bull; Gemma 4 interprets evidence &bull; Humans decide</p>
-        </div>
-      </div>
-
-      <div class="header-status">
-        <!-- Live vs Sample Indicator -->
-        <div id="mode-indicator" class="status-badge badge-sample" aria-live="polite">
-          <span class="badge-dot" aria-hidden="true"></span>
-          <span id="mode-indicator-text" class="badge-label">SAMPLE MODE</span>
-        </div>
-
-        <!-- Health / Model Status -->
-        <div id="health-indicator" class="health-pill" title="Backend & Model status">
-          <span class="health-dot" id="health-dot" aria-hidden="true"></span>
-          <span class="health-label" id="health-label">Gemma 4: Checking…</span>
-        </div>
-      </div>
-    </header>
-
-    <!-- Main 3-Column Desk Workspace -->
-    <div class="desk-workspace" role="main">
-
-      <!-- COLUMN 1: PR Queue & Input (Left) -->
-      <aside class="col-queue" id="col-queue" aria-label="Pull Request Queue and Input">
-        <div class="panel-header">
-          <h2 class="panel-title">PR Dossier Queue</h2>
-          <span class="panel-count" id="queue-count">1 item</span>
-        </div>
-
-        <!-- Investigation Input Box -->
-        <section class="investigation-input-card">
-          <label for="pr-url-input" class="input-label">Investigate Pull Request</label>
-          <div class="input-group">
-            <input 
-              type="text" 
-              id="pr-url-input" 
-              class="text-input" 
-              placeholder="owner/repo#123 or PR URL" 
-              autocomplete="off"
-              spellcheck="false"
-              aria-describedby="input-help"
-            >
-            <button type="button" id="btn-analyze" class="btn btn-primary">
-              <span class="btn-icon" aria-hidden="true">🔍</span>
-              <span class="btn-text">Analyze</span>
-            </button>
+    <!-- ====================================================================
+         VIEW 1: STARTING LANDING VIEW (Default)
+         ==================================================================== -->
+    <div id="view-landing" class="view-landing">
+      <!-- Landing Header -->
+      <header class="landing-header" role="banner">
+        <div class="landing-brand">
+          <div class="brand-mark" aria-hidden="true">
+            <span class="mark-symbol">&sect;</span>
           </div>
-          <p id="input-help" class="input-help">
-            Enter GitHub PR link (e.g. <span class="code-ref">https://github.com/psf/requests/pull/6541</span>)
+          <div class="brand-titles">
+            <h1 class="brand-name">SIFT <span class="brand-tag">Evidence Desk</span></h1>
+            <p class="brand-credo">Code retrieves facts &bull; Gemma 4 interprets evidence &bull; Humans decide</p>
+          </div>
+        </div>
+        <div class="landing-header-actions">
+          <button type="button" id="btn-landing-open-nav" class="btn btn-secondary btn-sm">Open Workspace</button>
+          <button type="button" id="btn-landing-sample-nav" class="btn btn-primary btn-sm">Try Sample PR</button>
+        </div>
+      </header>
+
+      <!-- Hero Section -->
+      <main class="landing-content">
+        <section class="landing-hero">
+          <div class="hero-badge">EVIDENCE-FIRST PULL REQUEST TRIAGE</div>
+          <h2 class="hero-title">Triage pull requests with receipts.</h2>
+          <p class="hero-subtitle">
+            A fast, objective triage assistant for open-source maintainers. Gemma 4 reads unified diffs, extracts verifiable facts, and drafts replies. You decide what merges.
           </p>
-          <div class="sample-action-row">
-            <button type="button" id="btn-load-sample" class="btn btn-secondary btn-sm">
-              <span class="btn-icon" aria-hidden="true">📋</span>
-              <span>Load Verified Sample PR</span>
+          <div class="hero-cta-row">
+            <button type="button" id="btn-landing-open" class="btn btn-primary btn-lg">
+              <span>Open workspace</span>
+              <span aria-hidden="true">&rarr;</span>
+            </button>
+            <button type="button" id="btn-landing-sample" class="btn btn-secondary btn-lg">
+              <span>Try sample PR</span>
+              <span aria-hidden="true">&nearr;</span>
             </button>
           </div>
         </section>
 
-        <!-- Queue Item List -->
-        <div class="queue-list-container">
-          <div class="queue-section-header">Active Dossiers</div>
-          <ul class="queue-list" id="queue-list" role="listbox" aria-label="Queue of pull requests">
-            <!-- Dynamically populated via textContent in app.js -->
-          </ul>
-        </div>
-
-        <!-- Compact Locked Invariants Footer Strip -->
-        <div class="desk-invariants-card invariants-compact">
-          <span class="invariants-icon" aria-hidden="true">⚖</span>
-          <span class="invariants-compact-title">Locked Invariants:</span>
-          <span class="invariants-compact-item">Human Supremacy</span>
-          <span class="invariants-dot">&bull;</span>
-          <span class="invariants-compact-item">Zero Bias</span>
-          <span class="invariants-dot">&bull;</span>
-          <span class="invariants-compact-item">Quote-Verified</span>
-        </div>
-      </aside>
-
-      <!-- COLUMN 2: Evidence Desk (Center) -->
-      <section class="col-desk" id="col-desk" aria-label="Evidence Desk Center Column">
-        <!-- Desk Status Bar -->
-        <div class="desk-toolbar">
-          <div class="dossier-id-box">
-            <span class="dossier-pill" id="dossier-type-badge">PR DOSSIER</span>
-            <span class="dossier-slug" id="dossier-slug">psf/requests#6541</span>
-            <span class="branch-pill" id="branch-info">main &larr; fix/timeout-handling</span>
+        <!-- 3-Step "How it works" -->
+        <section class="landing-section">
+          <div class="section-label-box">
+            <span class="section-badge">PROCESS</span>
+            <h3 class="landing-section-title">How It Works</h3>
           </div>
-          <div class="toolbar-actions">
-            <span class="source-tag" id="dossier-source-tag">DATA SOURCE: SAMPLE PACKET</span>
-            <a href="#" id="view-on-github-link" class="btn-link" target="_blank" rel="noopener noreferrer">
-              <span>GitHub</span>
-              <span aria-hidden="true">&nearr;</span>
-            </a>
-          </div>
-        </div>
-
-        <!-- Center Panel State Displays -->
-
-        <!-- State: Empty -->
-        <div id="state-empty" class="desk-state-view desk-state-empty" style="display: none;">
-          <div class="empty-dossier-box">
-            <div class="empty-icon" aria-hidden="true">📂</div>
-            <h3 class="empty-title">Desk Ready for Investigation</h3>
-            <p class="empty-desc">
-              Paste a GitHub Pull Request URL into the queue input on the left, or load the verified sample PR to inspect the evidence retrieval and quotation checks.
-            </p>
-            <button type="button" class="btn btn-primary" id="btn-empty-sample">Load Sample Dossier</button>
-          </div>
-        </div>
-
-        <!-- State: Loading -->
-        <div id="state-loading" class="desk-state-view desk-state-loading" style="display: none;">
-          <div class="loading-dossier-box">
-            <div class="loading-spinner" aria-hidden="true"></div>
-            <h3 class="loading-title">Retrieving Evidence & Synthesizing Facts…</h3>
-            <div class="loading-timeline">
-              <div class="timeline-step step-done" id="load-step-1">
-                <span class="step-marker" aria-hidden="true">&check;</span>
-                <span class="step-text">Parsing PR identifier & validating endpoint</span>
-              </div>
-              <div class="timeline-step step-active" id="load-step-2">
-                <span class="step-marker" aria-hidden="true">&bull;</span>
-                <span class="step-text">Retrieving unified diff & metadata from GitHub API</span>
-              </div>
-              <div class="timeline-step" id="load-step-3">
-                <span class="step-marker" aria-hidden="true">&bull;</span>
-                <span class="step-text">Gemma 4 assessing evidence packet via REST API</span>
-              </div>
-              <div class="timeline-step" id="load-step-4">
-                <span class="step-marker" aria-hidden="true">&bull;</span>
-                <span class="step-text">Executing in-code substring quote verification</span>
-              </div>
-            </div>
-            <p class="loading-subtext">Zero contributor profiling. Quotes are strictly audited against raw diffs.</p>
-          </div>
-        </div>
-
-        <!-- State: Error -->
-        <div id="state-error" class="desk-state-view desk-state-error" style="display: none;">
-          <div class="error-dossier-box">
-            <div class="error-icon" aria-hidden="true">⚠️</div>
-            <h3 class="error-title">Investigation Could Not Be Completed</h3>
-            <p class="error-message" id="error-message-text">Error message text here</p>
-            <div class="error-actions">
-              <button type="button" class="btn btn-secondary" id="btn-error-retry">Retry Request</button>
-              <button type="button" class="btn btn-primary" id="btn-error-sample">Switch to Verified Sample PR</button>
-            </div>
-            <div class="error-details-box" id="error-details-container" style="display: none;">
-              <span class="error-details-label">Diagnostics:</span>
-              <pre class="error-details-code" id="error-details-code"></pre>
-            </div>
-          </div>
-        </div>
-
-        <!-- State: Model Unavailable Notice -->
-        <div id="state-model-unavailable" class="desk-alert-banner alert-warning" style="display: none;">
-          <div class="alert-icon" aria-hidden="true">⚙️</div>
-          <div class="alert-content">
-            <h4 class="alert-title">Gemma 4 Backend Unconfigured</h4>
-            <p class="alert-text">
-              The <span class="code-ref">GEMINI_API_KEY</span> environment variable is not set or the local server is still launching. You can currently explore the complete desk workflow using our authentic verified <strong>Sample PR</strong>.
-            </p>
-          </div>
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-dismiss-alert">Dismiss</button>
-        </div>
-
-        <!-- State: Partial Data Warning Notice -->
-        <div id="state-partial-data-banner" class="desk-alert-banner alert-amber" style="display: none;">
-          <div class="alert-icon" aria-hidden="true">⚠️</div>
-          <div class="alert-content">
-            <h4 class="alert-title" id="partial-data-title">Partial Data Investigation</h4>
-            <p class="alert-text" id="partial-data-text">
-              Diff exceeded safe retrieval limit (1,500 lines) and was truncated. Unverified claims remain quarantined.
-            </p>
-          </div>
-        </div>
-
-        <!-- State: Content (Paper-like Evidence Desk) -->
-        <div id="state-content" class="desk-scroll-area">
-
-          <!-- Paper Card 1: PR Header & Metadata -->
-          <article class="paper-card" id="card-metadata">
-            <div class="paper-stamp-row">
-              <span class="paper-stamp">SOURCE METADATA</span>
-              <span class="paper-pr-number" id="pr-number-badge">#6541</span>
-            </div>
-
-            <h2 class="pr-headline" id="pr-headline-text">Loading title…</h2>
-
-            <div class="pr-meta-grid">
-              <div class="meta-field">
-                <span class="meta-label">Author</span>
-                <span class="meta-value author-tag" id="pr-author-val">@author</span>
-              </div>
-              <div class="meta-field">
-                <span class="meta-label">Status</span>
-                <span class="meta-value state-tag" id="pr-state-val">OPEN</span>
-              </div>
-              <div class="meta-field">
-                <span class="meta-label">Code Delta</span>
-                <span class="meta-value diff-stat-val" id="pr-delta-val">
-                  <span class="stat-add">+18</span> / <span class="stat-del">-4</span> (1 file)
-                </span>
-              </div>
-            </div>
-
-            <!-- PR Body / Description -->
-            <div class="pr-body-section">
-              <div class="section-label-row">
-                <span class="section-label">PULL REQUEST DESCRIPTION</span>
-                <span class="source-corpus-indicator">[source: body]</span>
-              </div>
-              <div class="paper-quote-box" id="pr-body-container">
-                <!-- Rendered safely via textContent -->
-              </div>
-            </div>
-          </article>
-
-          <!-- Paper Card 2: Changed Files Inventory -->
-          <article class="paper-card" id="card-files">
-            <div class="paper-stamp-row">
-              <span class="paper-stamp">FILE MODIFICATIONS</span>
-              <span class="file-count-badge" id="file-count-badge">1 file changed</span>
-            </div>
-            <ul class="file-list" id="changed-files-list">
-              <!-- Dynamically populated safely via textContent -->
-            </ul>
-          </article>
-
-          <!-- Paper Card 3: Unified Diff Excerpt Viewer -->
-          <article class="paper-card" id="card-diff">
-            <div class="paper-stamp-row">
-              <span class="paper-stamp">AUTHENTIC DIFF EXCERPTS</span>
-              <span class="source-corpus-indicator">[source: diff]</span>
-            </div>
-
-            <div class="diff-viewer-wrapper">
-              <div class="diff-file-header" id="diff-file-header-title">
-                <span class="diff-file-icon" aria-hidden="true">📄</span>
-                <span class="diff-file-path" id="diff-file-path-text">requests/adapters.py</span>
-                <span class="diff-truncation-badge" id="diff-truncation-badge" style="display: none;">TRUNCATED (1500L max)</span>
-              </div>
-
-              <!-- Diff lines rendered securely via DOM elements and textContent -->
-              <div class="diff-code-panel" id="diff-code-panel" role="region" aria-label="Unified Git Diff">
-                <!-- Diff lines inserted safely by app.js -->
-              </div>
-            </div>
-            
-            <div class="diff-footer-note">
-              <span>* Substring verification audits model claims directly against these raw diff lines.</span>
-            </div>
-          </article>
-
-        </div>
-      </section>
-
-      <!-- COLUMN 3: Assessment Dossier (Right) -->
-      <aside class="col-assessment" id="col-assessment" aria-label="Gemma 4 Assessment Dossier">
-        <div class="panel-header">
-          <h2 class="panel-title">Maintainer Assessment</h2>
-          <span class="model-badge" id="assessor-model-badge">Gemma 4 (26B)</span>
-        </div>
-
-        <div class="assessment-scroll-area" id="assessment-scroll-area">
-
-          <!-- Executive Recommendation Card -->
-          <section class="assessment-card" id="card-recommendation">
-            <div class="rec-header-row">
-              <span class="assessment-section-label">RECOMMENDATION</span>
-              <span class="confidence-pill" id="badge-confidence">CONFIDENCE: HIGH</span>
-            </div>
-
-            <!-- Recommendation Stamp -->
-            <div class="recommendation-stamp-box">
-              <div class="rec-badge" id="badge-recommendation">REVIEW</div>
-              <p class="rec-explanation" id="rec-explanation-text">
-                Changes appear focused and sound. Ready for maintainer code review.
+          <div class="steps-grid">
+            <div class="step-card">
+              <div class="step-badge">STEP 1</div>
+              <h4 class="step-title">Fetch facts</h4>
+              <p class="step-desc">
+                Retrieves raw unified diffs, file lists, and authentic PR context directly from GitHub without profiling contributor identity.
               </p>
             </div>
-
-            <!-- Priority Meter (1 to 5) -->
-            <div class="priority-meter-section">
-              <div class="priority-meter-label-row">
-                <span class="priority-label">Priority Score</span>
-                <span class="priority-numeric" id="priority-numeric-text">3 / 5 &bull; Moderate</span>
-              </div>
-              <div class="priority-bar-container" role="progressbar" id="priority-progress-bar" aria-valuenow="3" aria-valuemin="1" aria-valuemax="5">
-                <div class="priority-segment segment-1 active">1</div>
-                <div class="priority-segment segment-2 active">2</div>
-                <div class="priority-segment segment-3 active">3</div>
-                <div class="priority-segment segment-4">4</div>
-                <div class="priority-segment segment-5">5</div>
-              </div>
-              <p class="priority-note" id="priority-note-text">
-                Score based purely on architectural impact and breakage risk, never contributor identity.
+            <div class="step-card">
+              <div class="step-badge">STEP 2</div>
+              <h4 class="step-title">Gemma reads the evidence</h4>
+              <p class="step-desc">
+                Gemma 4 synthesizes findings and extracts verbatim quotes. In-code substring verification audits quotes against raw diffs.
               </p>
             </div>
-          </section>
+            <div class="step-card">
+              <div class="step-badge">STEP 3</div>
+              <h4 class="step-title">You decide</h4>
+              <p class="step-desc">
+                Inspect highlighted receipts in the dossier, check blindspots, and copy draft responses. Sift never auto-posts comments.
+              </p>
+            </div>
+          </div>
+        </section>
 
-          <!-- Summary Interpretation Card -->
-          <section class="assessment-card" id="card-summary">
-            <span class="assessment-section-label">OBJECTIVE SUMMARY</span>
-            <p class="summary-body" id="assessment-summary-text">
-              Loading assessment summary…
-            </p>
-          </section>
+        <!-- 3 Principle Cards -->
+        <section class="landing-section">
+          <div class="section-label-box">
+            <span class="section-badge">INTEGRITY CONTRACT</span>
+            <h3 class="landing-section-title">Maintainer Principles</h3>
+          </div>
+          <div class="principles-grid">
+            <div class="principle-card">
+              <div class="principle-icon" aria-hidden="true">&#9878;</div>
+              <h4 class="principle-title">Nothing is posted automatically</h4>
+              <p class="principle-desc">
+                Never auto-closes, merges, labels, or comments on pull requests. Only human maintainers initiate GitHub actions.
+              </p>
+            </div>
+            <div class="principle-card">
+              <div class="principle-icon" aria-hidden="true">&#128269;</div>
+              <h4 class="principle-title">Every quote is verified in code</h4>
+              <p class="principle-desc">
+                Every citation must match an authentic substring of the retrieved source. Unverified quotes are quarantined immediately.
+              </p>
+            </div>
+            <div class="principle-card">
+              <div class="principle-icon" aria-hidden="true">&#129309;</div>
+              <h4 class="principle-title">New contributors are never penalized</h4>
+              <p class="principle-desc">
+                Zero contributor profiling or scoring bias. First-time contributors and one-line typo fixes are evaluated with equal objective care.
+              </p>
+            </div>
+          </div>
+        </section>
 
-          <!-- SIGNATURE COMPONENT: Evidence Rail -->
-          <section class="assessment-card" id="card-evidence-rail">
-            <div class="evidence-rail-header">
-              <div>
-                <span class="assessment-section-label">EVIDENCE RAIL</span>
-                <h3 class="evidence-rail-title">Fact & Quote Verification</h3>
+        <!-- Locked Invariants Block (Moved from Workspace) -->
+        <section class="landing-invariants-section">
+          <div class="invariants-card">
+            <div class="invariants-header">
+              <span class="invariants-icon" aria-hidden="true">&sect;</span>
+              <h4 class="invariants-title">Locked Invariants (Non-Negotiable)</h4>
+            </div>
+            <div class="invariants-grid">
+              <div class="invariant-item">
+                <span class="invariant-num">1</span>
+                <div>
+                  <strong>Human-in-the-Loop Supremacy:</strong> Suggestions only; maintainers initiate all actions.
+                </div>
               </div>
-              <span class="evidence-count-pill" id="evidence-count-badge">0 items</span>
-            </div>
-            
-            <p class="evidence-rail-intro">
-              Every quote is verified in code as an authentic substring of the PR. Click an item to illuminate the excerpt in the center desk.
-            </p>
-
-            <!-- Evidence List Container -->
-            <div class="evidence-list" id="evidence-items-container" role="list">
-              <!-- Evidence items populated via textContent in app.js -->
-            </div>
-          </section>
-
-          <!-- Missing Context Section -->
-          <section class="assessment-card" id="card-missing-context">
-            <span class="assessment-section-label">MISSING CONTEXT & BLINDSPOTS</span>
-            <ul class="missing-context-list" id="missing-context-list">
-              <!-- Dynamically populated -->
-            </ul>
-          </section>
-
-          <!-- Uncertainty Reason (Shown when confidence is low/medium) -->
-          <section class="assessment-card alert-card-uncertainty" id="card-uncertainty" style="display: none;">
-            <div class="uncertainty-header">
-              <span class="uncertainty-icon" aria-hidden="true">⚠️</span>
-              <span class="assessment-section-label">UNCERTAINTY DISCLOSURE</span>
-            </div>
-            <p class="uncertainty-text" id="uncertainty-reason-text">
-              Reason for reduced confidence.
-            </p>
-          </section>
-
-          <!-- Maintainer Reply Draft Section -->
-          <section class="assessment-card reply-draft-card" id="card-reply-draft">
-            <div class="reply-draft-header">
-              <div>
-                <span class="assessment-section-label">SUGGESTED RESPONSE DRAFT</span>
-                <h3 class="reply-draft-title">Maintainer Review Note</h3>
+              <div class="invariant-item">
+                <span class="invariant-num">2</span>
+                <div>
+                  <strong>Zero Contributor Bias:</strong> No author scoring, profiling, or penalty for new contributors.
+                </div>
               </div>
-              <span class="hitl-tag">HUMAN DECIDES</span>
+              <div class="invariant-item">
+                <span class="invariant-num">3</span>
+                <div>
+                  <strong>In-Code Quote Verification:</strong> Substrings checked strictly; unverified quotes quarantined.
+                </div>
+              </div>
+              <div class="invariant-item">
+                <span class="invariant-num">4</span>
+                <div>
+                  <strong>Raw REST API for Gemma 4:</strong> Standard requests; thought tokens filtered; balanced JSON parser.
+                </div>
+              </div>
+              <div class="invariant-item">
+                <span class="invariant-num">5</span>
+                <div>
+                  <strong>Secrets & Security:</strong> No tokens or API keys committed, logged, or exposed.
+                </div>
+              </div>
             </div>
+          </div>
+        </section>
+      </main>
 
-            <p class="hitl-notice">
-              Draft synthesized by Gemma 4. Sift <strong>never</strong> posts comments to GitHub. Copy to clipboard to edit and send.
-            </p>
-
-            <div class="textarea-wrapper">
-              <textarea 
-                id="reply-draft-textarea" 
-                class="reply-textarea" 
-                rows="5" 
-                aria-label="Editable maintainer response draft"
-                spellcheck="true"
-              ></textarea>
-            </div>
-
-            <div class="reply-actions-row">
-              <button type="button" id="btn-copy-draft" class="btn btn-primary btn-copy">
-                <span class="btn-icon" aria-hidden="true">📋</span>
-                <span id="btn-copy-draft-text">Copy Response Draft</span>
-              </button>
-              <button type="button" id="btn-reset-draft" class="btn btn-secondary btn-sm" title="Reset to original suggestion">
-                Reset
-              </button>
-            </div>
-
-            <!-- Copy Toast Notification -->
-            <div id="copy-toast" class="copy-toast" role="status" aria-live="polite" style="display: none;">
-              <span class="toast-icon" aria-hidden="true">&check;</span>
-              <span>Copied draft to clipboard! Paste into your GitHub PR review.</span>
-            </div>
-          </section>
-
-        </div>
-      </aside>
-
+      <footer class="landing-footer">
+        <span>SIFT &bull; Evidence Desk &bull; Code retrieves facts, Gemma 4 interprets evidence, humans decide.</span>
+      </footer>
     </div>
 
-    <!-- Desk Footer: Data Source, Time, Model & Principles -->
-    <footer class="desk-footer" role="contentinfo">
-      <div class="footer-item">
-        <span class="footer-label">DATA SOURCE:</span>
-        <span class="footer-value" id="footer-data-source">Sample Evidence Packet (Verified)</span>
+
+    <!-- ====================================================================
+         VIEW 2: WORKSPACE VIEW
+         ==================================================================== -->
+    <div id="view-workspace" class="view-workspace" style="display: none;">
+
+      <!-- Big Repo Input Top Bar -->
+      <header class="workspace-top-bar" role="banner">
+        <div class="workspace-nav-left">
+          <button type="button" id="btn-nav-home" class="btn btn-secondary btn-sm nav-home-btn" title="Back to landing page">
+            <span aria-hidden="true">&larr;</span> <span>Home</span>
+          </button>
+          <div class="brand-mini">
+            <span class="brand-mini-symbol">&sect;</span>
+            <span class="brand-mini-title">SIFT <span class="brand-tag">Desk</span></span>
+          </div>
+        </div>
+
+        <div class="workspace-search-bar">
+          <div class="input-group search-group">
+            <input 
+              type="text" 
+              id="pr-url-input" 
+              class="text-input repo-input-lg" 
+              placeholder="owner/repo#123 or https://github.com/owner/repo/pull/123" 
+              autocomplete="off"
+              spellcheck="false"
+              aria-label="GitHub pull request identifier or URL"
+            >
+            <button type="button" id="btn-analyze" class="btn btn-primary">
+              <span aria-hidden="true">&#128269;</span>
+              <span class="btn-text">Analyze</span>
+            </button>
+            <button type="button" id="btn-load-sample" class="btn btn-secondary btn-sm" title="Load authentic verified sample PR">
+              <span>Sample PR</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="workspace-status-right">
+          <!-- SAMPLE/LIVE label clearly in the top bar -->
+          <div id="mode-indicator" class="status-badge badge-sample" aria-live="polite">
+            <span class="badge-dot" aria-hidden="true"></span>
+            <span id="mode-indicator-text" class="badge-label">SAMPLE MODE</span>
+          </div>
+
+          <!-- Health / Model Status -->
+          <div id="health-indicator" class="health-pill" title="Backend & Model status">
+            <span class="health-dot" id="health-dot" aria-hidden="true"></span>
+            <span class="health-label" id="health-label">Gemma 4: Checking…</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main 3-Column Desk Workspace -->
+      <div class="desk-workspace" role="main">
+
+        <!-- COLUMN 1: Narrow PR Queue (Left) -->
+        <aside class="col-queue" id="col-queue" aria-label="Pull Request Queue">
+          <div class="panel-header">
+            <h2 class="panel-title">PR Queue</h2>
+            <span class="panel-count" id="queue-count">1 item</span>
+          </div>
+
+          <div class="queue-list-container">
+            <ul class="queue-list" id="queue-list" role="listbox" aria-label="Queue of pull requests">
+              <!-- Dynamically populated via textContent in app.js -->
+            </ul>
+          </div>
+        </aside>
+
+        <!-- COLUMN 2: Evidence Desk (Center) with TABS -->
+        <section class="col-desk" id="col-desk" aria-label="Evidence Desk Center Column">
+          <!-- Desk Toolbar -->
+          <div class="desk-toolbar">
+            <div class="dossier-id-box">
+              <span class="dossier-pill" id="dossier-type-badge">PR DOSSIER</span>
+              <span class="dossier-slug" id="dossier-slug">psf/requests#6541</span>
+              <span class="branch-pill" id="branch-info">main &larr; fix/timeout-handling</span>
+            </div>
+            <div class="toolbar-actions">
+              <span class="source-tag" id="dossier-source-tag">DATA SOURCE: SAMPLE PACKET</span>
+              <a href="#" id="view-on-github-link" class="btn-link" target="_blank" rel="noopener noreferrer">
+                <span>GitHub</span>
+                <span aria-hidden="true">&nearr;</span>
+              </a>
+            </div>
+          </div>
+
+          <!-- Center Panel State Displays -->
+
+          <!-- State: Empty -->
+          <div id="state-empty" class="desk-state-view desk-state-empty" style="display: none;">
+            <div class="empty-dossier-box">
+              <div class="empty-icon" aria-hidden="true">&#128194;</div>
+              <h3 class="empty-title">Desk Ready for Investigation</h3>
+              <p class="empty-desc">
+                Paste a GitHub Pull Request URL into the input above, or load the verified sample PR to inspect evidence retrieval and quotations.
+              </p>
+              <button type="button" class="btn btn-primary" id="btn-empty-sample">Load Sample Dossier</button>
+            </div>
+          </div>
+
+          <!-- State: Loading / Analyzing View (Real 4-step progress list) -->
+          <div id="state-loading" class="desk-state-view desk-state-loading" style="display: none;">
+            <div class="loading-dossier-box">
+              <div class="loading-spinner" aria-hidden="true"></div>
+              <h3 class="loading-title">Analyzing Pull Request…</h3>
+              <div class="loading-timeline">
+                <div class="timeline-step step-active" id="load-step-1">
+                  <span class="step-marker" aria-hidden="true">1</span>
+                  <span class="step-text">Fetching PR facts</span>
+                </div>
+                <div class="timeline-step" id="load-step-2">
+                  <span class="step-marker" aria-hidden="true">2</span>
+                  <span class="step-text">Reading changed files</span>
+                </div>
+                <div class="timeline-step" id="load-step-3">
+                  <span class="step-marker" aria-hidden="true">3</span>
+                  <span class="step-text">Gemma assessing</span>
+                </div>
+                <div class="timeline-step" id="load-step-4">
+                  <span class="step-marker" aria-hidden="true">4</span>
+                  <span class="step-text">Verifying quotes</span>
+                </div>
+              </div>
+              <p class="loading-subtext">Waiting for real backend response. Zero contributor profiling.</p>
+            </div>
+          </div>
+
+          <!-- State: Error -->
+          <div id="state-error" class="desk-state-view desk-state-error" style="display: none;">
+            <div class="error-dossier-box">
+              <div class="error-icon" aria-hidden="true">&#9888;</div>
+              <h3 class="error-title">Investigation Could Not Be Completed</h3>
+              <p class="error-message" id="error-message-text">Error message text here</p>
+              <div class="error-actions">
+                <button type="button" class="btn btn-secondary" id="btn-error-retry">Retry Request</button>
+                <button type="button" class="btn btn-primary" id="btn-error-sample">Switch to Verified Sample PR</button>
+              </div>
+              <div class="error-details-box" id="error-details-container" style="display: none;">
+                <span class="error-details-label">Diagnostics:</span>
+                <pre class="error-details-code" id="error-details-code"></pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- State: Model Unavailable Notice -->
+          <div id="state-model-unavailable" class="desk-alert-banner alert-warning" style="display: none;">
+            <div class="alert-icon" aria-hidden="true">&#9881;</div>
+            <div class="alert-content">
+              <h4 class="alert-title">Gemma 4 Backend Unconfigured</h4>
+              <p class="alert-text">
+                The <span class="code-ref">GEMINI_API_KEY</span> environment variable is not set. You can explore the complete desk workflow using our authentic verified <strong>Sample PR</strong>.
+              </p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-dismiss-alert">Dismiss</button>
+          </div>
+
+          <!-- State: Partial Data / Quarantine Notice Banner -->
+          <div id="state-partial-data-banner" class="desk-alert-banner alert-amber" style="display: none;">
+            <div class="alert-icon" aria-hidden="true">&#9888;</div>
+            <div class="alert-content">
+              <h4 class="alert-title" id="partial-data-title">Partial Data Investigation</h4>
+              <p class="alert-text" id="partial-data-text">
+                Diff exceeded safe retrieval limit (1,500 lines) and was truncated. Unverified claims remain quarantined.
+              </p>
+            </div>
+          </div>
+
+          <!-- State: Content (Center Dossier with TABS) -->
+          <div id="state-content" class="desk-tabs-container">
+            <!-- Dossier Tab Bar -->
+            <div class="dossier-tab-bar" role="tablist" aria-label="PR Dossier Sections">
+              <button type="button" class="dossier-tab active" id="tab-btn-overview" role="tab" aria-selected="true" data-tab="tab-overview">
+                <span>Overview</span>
+              </button>
+              <button type="button" class="dossier-tab" id="tab-btn-files" role="tab" aria-selected="false" data-tab="tab-files">
+                <span>Files</span>
+                <span class="tab-badge" id="tab-file-count-badge">1</span>
+              </button>
+              <button type="button" class="dossier-tab" id="tab-btn-diff" role="tab" aria-selected="false" data-tab="tab-diff">
+                <span>Diff Excerpts</span>
+              </button>
+            </div>
+
+            <!-- Tab Panels Scroll Area -->
+            <div class="dossier-tab-content-area">
+
+              <!-- TAB PANEL 1: Overview -->
+              <div class="dossier-tab-panel" id="tab-overview" role="tabpanel" aria-labelledby="tab-btn-overview">
+                <article class="paper-card" id="card-metadata">
+                  <div class="paper-stamp-row">
+                    <span class="paper-stamp">PR METADATA</span>
+                    <span class="paper-pr-number" id="pr-number-badge">#6541</span>
+                  </div>
+
+                  <h2 class="pr-headline" id="pr-headline-text">Loading title…</h2>
+
+                  <div class="pr-meta-grid">
+                    <div class="meta-field">
+                      <span class="meta-label">Author</span>
+                      <span class="meta-value author-tag" id="pr-author-val">@author</span>
+                    </div>
+                    <div class="meta-field">
+                      <span class="meta-label">Status</span>
+                      <span class="meta-value state-tag" id="pr-state-val">OPEN</span>
+                    </div>
+                    <div class="meta-field">
+                      <span class="meta-label">Code Delta</span>
+                      <span class="meta-value diff-stat-val" id="pr-delta-val">
+                        <span class="stat-add">+18</span> / <span class="stat-del">-4</span> (1 file)
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- PR Body / Description -->
+                  <div class="pr-body-section">
+                    <div class="section-label-row">
+                      <span class="section-label">PULL REQUEST DESCRIPTION</span>
+                      <span class="source-corpus-indicator">[source: body]</span>
+                    </div>
+                    <div class="paper-quote-box" id="pr-body-container">
+                      <!-- Rendered safely via textContent -->
+                    </div>
+                  </div>
+                </article>
+              </div>
+
+              <!-- TAB PANEL 2: Files -->
+              <div class="dossier-tab-panel" id="tab-files" role="tabpanel" aria-labelledby="tab-btn-files" style="display: none;">
+                <article class="paper-card" id="card-files">
+                  <div class="paper-stamp-row">
+                    <span class="paper-stamp">FILE MODIFICATIONS</span>
+                    <span class="file-count-badge" id="file-count-badge">1 file changed</span>
+                  </div>
+                  <ul class="file-list" id="changed-files-list">
+                    <!-- Dynamically populated safely via textContent -->
+                  </ul>
+                </article>
+              </div>
+
+              <!-- TAB PANEL 3: Diff Excerpts -->
+              <div class="dossier-tab-panel" id="tab-diff" role="tabpanel" aria-labelledby="tab-btn-diff" style="display: none;">
+                <article class="paper-card" id="card-diff">
+                  <div class="paper-stamp-row">
+                    <span class="paper-stamp">AUTHENTIC DIFF EXCERPTS</span>
+                    <span class="source-corpus-indicator">[source: diff]</span>
+                  </div>
+
+                  <div class="diff-viewer-wrapper">
+                    <div class="diff-file-header" id="diff-file-header-title">
+                      <span class="diff-file-icon" aria-hidden="true">&#128196;</span>
+                      <span class="diff-file-path" id="diff-file-path-text">requests/adapters.py</span>
+                      <span class="diff-truncation-badge" id="diff-truncation-badge" style="display: none;">TRUNCATED (1500L max)</span>
+                    </div>
+
+                    <div class="diff-code-panel" id="diff-code-panel" role="region" aria-label="Unified Git Diff">
+                      <!-- Diff lines inserted safely by app.js -->
+                    </div>
+                  </div>
+                  
+                  <div class="diff-footer-note">
+                    <span>* Substring verification audits model claims directly against these raw diff lines.</span>
+                  </div>
+                </article>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        <!-- COLUMN 3: Assessment Dossier (Right) -->
+        <aside class="col-assessment" id="col-assessment" aria-label="Gemma 4 Assessment Dossier">
+          <div class="panel-header">
+            <h2 class="panel-title">Assessment</h2>
+            <span class="model-badge" id="assessor-model-badge">Gemma 4 (26B)</span>
+          </div>
+
+          <div class="assessment-scroll-area" id="assessment-scroll-area">
+
+            <!-- 1. Executive Recommendation & Priority Card -->
+            <section class="assessment-card" id="card-recommendation">
+              <div class="rec-header-row">
+                <span class="assessment-section-label">RECOMMENDATION</span>
+                <span class="confidence-pill" id="badge-confidence">CONFIDENCE: HIGH</span>
+              </div>
+
+              <div class="recommendation-stamp-box">
+                <div class="rec-badge" id="badge-recommendation">REVIEW</div>
+                <p class="rec-explanation" id="rec-explanation-text">
+                  Changes appear focused and sound. Ready for maintainer code review.
+                </p>
+              </div>
+
+              <!-- Priority Meter -->
+              <div class="priority-meter-section">
+                <div class="priority-meter-label-row">
+                  <span class="priority-label">Priority Score</span>
+                  <span class="priority-numeric" id="priority-numeric-text">3 / 5 &bull; Moderate</span>
+                </div>
+                <div class="priority-bar-container" role="progressbar" id="priority-progress-bar" aria-valuenow="3" aria-valuemin="1" aria-valuemax="5">
+                  <div class="priority-segment segment-1 active">1</div>
+                  <div class="priority-segment segment-2 active">2</div>
+                  <div class="priority-segment segment-3 active">3</div>
+                  <div class="priority-segment segment-4">4</div>
+                  <div class="priority-segment segment-5">5</div>
+                </div>
+                <p class="priority-note" id="priority-note-text">
+                  Score based on architectural impact, never contributor identity.
+                </p>
+              </div>
+            </section>
+
+            <!-- 2. Objective Summary Interpretation Card -->
+            <section class="assessment-card" id="card-summary">
+              <span class="assessment-section-label">OBJECTIVE SUMMARY</span>
+              <p class="summary-body" id="assessment-summary-text">
+                Loading assessment summary…
+              </p>
+            </section>
+
+            <!-- 3. SIGNATURE COMPONENT: Evidence Rail (Collapsible) -->
+            <section class="assessment-card" id="card-evidence-rail">
+              <div class="evidence-rail-header">
+                <div>
+                  <span class="assessment-section-label">EVIDENCE RAIL</span>
+                  <h3 class="evidence-rail-title">Quote Verification</h3>
+                </div>
+                <span class="evidence-count-pill" id="evidence-count-badge">0 items</span>
+              </div>
+              
+              <p class="evidence-rail-intro">
+                Verified in code as authentic substrings. Click an item to expand details and illuminate in desk.
+              </p>
+
+              <div class="evidence-list" id="evidence-items-container" role="list">
+                <!-- Evidence items populated via textContent in app.js -->
+              </div>
+            </section>
+
+            <!-- 4. Missing Context Section -->
+            <section class="assessment-card" id="card-missing-context">
+              <span class="assessment-section-label">MISSING CONTEXT & BLINDSPOTS</span>
+              <ul class="missing-context-list" id="missing-context-list">
+                <!-- Dynamically populated -->
+              </ul>
+            </section>
+
+            <!-- 5. Uncertainty Reason -->
+            <section class="assessment-card alert-card-uncertainty" id="card-uncertainty" style="display: none;">
+              <div class="uncertainty-header">
+                <span class="uncertainty-icon" aria-hidden="true">&#9888;</span>
+                <span class="assessment-section-label">UNCERTAINTY DISCLOSURE</span>
+              </div>
+              <p class="uncertainty-text" id="uncertainty-reason-text">
+                Reason for reduced confidence.
+              </p>
+            </section>
+
+            <!-- 6. Maintainer Reply Draft Section -->
+            <section class="assessment-card reply-draft-card" id="card-reply-draft">
+              <div class="reply-draft-header">
+                <div>
+                  <span class="assessment-section-label">SUGGESTED RESPONSE DRAFT</span>
+                  <h3 class="reply-draft-title">Maintainer Review Note</h3>
+                </div>
+                <span class="hitl-tag">HUMAN DECIDES</span>
+              </div>
+
+              <p class="hitl-notice">
+                Sift <strong>never</strong> posts comments to GitHub. Copy to clipboard to edit and send.
+              </p>
+
+              <div class="textarea-wrapper">
+                <textarea 
+                  id="reply-draft-textarea" 
+                  class="reply-textarea" 
+                  rows="4" 
+                  aria-label="Editable maintainer response draft"
+                  spellcheck="true"
+                ></textarea>
+              </div>
+
+              <div class="reply-actions-row">
+                <button type="button" id="btn-copy-draft" class="btn btn-primary btn-copy">
+                  <span class="btn-icon" aria-hidden="true">&#128203;</span>
+                  <span id="btn-copy-draft-text">Copy Response Draft</span>
+                </button>
+                <button type="button" id="btn-reset-draft" class="btn btn-secondary btn-sm" title="Reset to original suggestion">
+                  Reset
+                </button>
+              </div>
+
+              <div id="copy-toast" class="copy-toast" role="status" aria-live="polite" style="display: none;">
+                <span class="toast-icon" aria-hidden="true">&check;</span>
+                <span>Copied draft to clipboard! Paste into your GitHub PR review.</span>
+              </div>
+            </section>
+
+          </div>
+        </aside>
+
       </div>
-      <div class="footer-separator" aria-hidden="true">&bull;</div>
-      <div class="footer-item">
-        <span class="footer-label">AUDITED AT:</span>
-        <span class="footer-value" id="footer-timestamp">2026-10-22 12:54:00 UTC</span>
-      </div>
-      <div class="footer-separator" aria-hidden="true">&bull;</div>
-      <div class="footer-item">
-        <span class="footer-label">ASSESSOR:</span>
-        <span class="footer-value" id="footer-model-name">gemma-4-26b-a4b-it via REST API</span>
-      </div>
-      <div class="footer-spacer"></div>
-      <div class="footer-principles">
-        <span>Substrings Verified in Code</span> &bull; <span>Human in the Loop</span>
-      </div>
-    </footer>
+
+      <!-- Single Slim Footer Line: Source, Time, Model -->
+      <footer class="desk-footer" role="contentinfo">
+        <div class="footer-item">
+          <span class="footer-label">SOURCE:</span>
+          <span class="footer-value" id="footer-data-source">Sample Evidence Packet (Verified)</span>
+        </div>
+        <div class="footer-separator" aria-hidden="true">&bull;</div>
+        <div class="footer-item">
+          <span class="footer-label">TIME:</span>
+          <span class="footer-value" id="footer-timestamp">2026-10-22 12:54:00 UTC</span>
+        </div>
+        <div class="footer-separator" aria-hidden="true">&bull;</div>
+        <div class="footer-item">
+          <span class="footer-label">ASSESSOR:</span>
+          <span class="footer-value" id="footer-model-name">gemma-4-26b-a4b-it via REST API</span>
+        </div>
+        <div class="footer-spacer"></div>
+        <div class="footer-principles">
+          <span>Substrings Verified</span> &bull; <span>Human in the Loop</span>
+        </div>
+      </footer>
+
+    </div>
 
   </div>
 
