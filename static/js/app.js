@@ -5,94 +5,11 @@
  * 1. Security: NEVER use innerHTML. All text rendered via textContent / DOM APIs.
  * 2. Maintainer Supremacy: Never auto-post comments or actions. Copy draft only.
  * 3. Quote Verification: Visual distinction (text + icon) for verified vs quarantined quotes.
- * 4. Sample vs Live: Sample data prominently stamped with SAMPLE label; never faked as live.
+ * 4. Human-in-the-Loop Supremacy: Only human maintainers initiate actions.
  */
 
 (function () {
   'use strict';
-
-  // ============================================================================
-  // Sample Data Specification (Prominently Stamped as SAMPLE)
-  // ============================================================================
-  const SAMPLE_PR_DATA = {
-    isSample: true,
-    pr: {
-      owner: 'psf',
-      repo: 'requests',
-      pull_number: 6541,
-      title: 'Fix unhandled TimeoutError during connection pool reuse',
-      author: 'elena-dev',
-      author_association: 'FIRST_TIME_CONTRIBUTOR',
-      state: 'open',
-      base_branch: 'main',
-      head_branch: 'fix/timeout-handling',
-      additions: 6,
-      deletions: 2,
-      changed_files: 1,
-      html_url: 'https://github.com/psf/requests/pull/6541',
-      body: 'Fixes an issue where rapid reconnection timeouts during connection pool reuse raise raw urllib3 TimeoutError instead of wrapping in requests.exceptions.ConnectTimeout.\n\nVerified in local smoke tests.'
-    },
-    files: [
-      { path: 'requests/adapters.py', additions: 6, deletions: 2 }
-    ],
-    diff: `--- a/requests/adapters.py
-+++ b/requests/adapters.py
-@@ -512,8 +512,14 @@ class HTTPAdapter(BaseAdapter):
-             # Connection error handling
-             raise ConnectionError(e, request=request)
--        except MaxRetryError as e:
--            if isinstance(e.reason, ConnectTimeoutError):
-+        except TimeoutError as e:
-+            raise ConnectTimeout(e, request=request)
-+        except MaxRetryError as e:
-+            if isinstance(e.reason, (ConnectTimeoutError, TimeoutError)):
-                 raise ConnectTimeout(e, request=request)
-             if isinstance(e.reason, ResponseError):
-                 raise RetryError(e, request=request)`,
-    assessment: {
-      summary: 'Normalizes connection timeout handling in HTTPAdapter by catching raw TimeoutError and wrapping it cleanly in requests ConnectTimeout.',
-      recommendation: 'review',
-      priority_score: 3,
-      confidence: 'high',
-      evidence: [
-        {
-          claim: 'Catches raw TimeoutError directly in HTTPAdapter exception handler',
-          source: 'diff',
-          quote: 'except TimeoutError as e:',
-          verified: true
-        },
-        {
-          claim: 'Wraps caught exception in requests ConnectTimeout',
-          source: 'diff',
-          quote: 'raise ConnectTimeout(e, request=request)',
-          verified: true
-        },
-        {
-          claim: 'Expands MaxRetryError check to match tuple of timeout exceptions',
-          source: 'diff',
-          quote: 'isinstance(e.reason, (ConnectTimeoutError, TimeoutError))',
-          verified: true
-        },
-        {
-          claim: 'Dossier claim: comprehensive regression test suite was provided',
-          source: 'body',
-          quote: 'added comprehensive pytest suite for all adapters',
-          verified: false
-        }
-      ],
-      missing_context: [
-        'Dedicated unit test in tests/test_requests.py simulating connection pool timeout condition',
-        'Verification of exception wrapping compatibility with urllib3 v1.26 and v2.x'
-      ],
-      suggested_response: 'Thank you for the contribution @elena-dev! The exception normalization in HTTPAdapter looks sound. Could you please add a unit test in tests/test_requests.py covering this pool timeout scenario so we can verify the ConnectTimeout wrapping and guard against regressions?',
-      uncertainty_reason: ''
-    },
-    metadata: {
-      dataSource: 'Sample Evidence Packet (Verified Authentic Excerpts)',
-      auditedAt: '2026-10-22 12:54:00 UTC',
-      assessorModel: 'gemma-4-26b-a4b-it via REST API'
-    }
-  };
 
   // ============================================================================
   // DOM Safe Element Builders (Zero innerHTML Usage)
@@ -122,9 +39,10 @@
   // Application State
   // ============================================================================
   const state = {
+    currentRepo: null,
     currentPR: null,
     currentAssessment: null,
-    isSample: true,
+    isCached: false,
     activeEvidenceIndex: null,
     queue: [],
     loadingTimer: null
@@ -142,7 +60,6 @@
     // Queue / Inputs
     prUrlInput: document.getElementById('pr-url-input'),
     btnAnalyze: document.getElementById('btn-analyze'),
-    btnLoadSample: document.getElementById('btn-load-sample'),
     queueList: document.getElementById('queue-list'),
     queueCount: document.getElementById('queue-count'),
 
@@ -156,10 +73,10 @@
     partialDataTitle: document.getElementById('partial-data-title'),
     partialDataText: document.getElementById('partial-data-text'),
     btnDismissAlert: document.getElementById('btn-dismiss-alert'),
-    btnEmptySample: document.getElementById('btn-empty-sample'),
-    btnErrorSample: document.getElementById('btn-error-sample'),
     btnErrorRetry: document.getElementById('btn-error-retry'),
+    btnRerunLive: document.getElementById('btn-rerun-live'),
     errorMessageText: document.getElementById('error-message-text'),
+    errorTitle: document.querySelector('#state-error .error-title'),
     errorDetailsContainer: document.getElementById('error-details-container'),
     errorDetailsCode: document.getElementById('error-details-code'),
 
@@ -238,7 +155,7 @@
       if (dom.healthIndicator) dom.healthIndicator.setAttribute('title', `Live Gemma inference succeeded (${currentGemmaModel})`);
     } else if (status === 'unchecked') {
       dom.healthDot.className = 'health-dot dot-unchecked';
-      dom.healthLabel.textContent = `${modelName}: Unchecked`;
+      dom.healthLabel.textContent = `${modelName}: Not yet called`;
       if (dom.healthIndicator) dom.healthIndicator.setAttribute('title', `Backend ready; no live Gemma inference evaluated yet (${currentGemmaModel})`);
     } else if (status === 'unconfigured') {
       dom.healthDot.className = 'health-dot dot-offline';
@@ -442,7 +359,7 @@
         dom.statePartialDataBanner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
       setTimeout(() => {
-        dom.dossierSourceTag.textContent = state.isSample ? 'DATA SOURCE: SAMPLE PACKET' : 'DATA SOURCE: GITHUB LIVE';
+        dom.dossierSourceTag.textContent = state.isCached ? 'DATA SOURCE: CACHE' : 'DATA SOURCE: GITHUB LIVE';
       }, 5000);
       return;
     }
@@ -632,25 +549,31 @@
   }
 
   // ============================================================================
-  // Complete Dossier Loader (Sample & Live)
+  // Complete Dossier Loader
   // ============================================================================
   function loadDossierIntoDesk(dossierData) {
-    state.isSample = Boolean(dossierData.isSample);
     state.currentPR = dossierData.pr;
+    state.currentAssessment = dossierData.assessment || dossierData.data;
+    state.isCached = Boolean(dossierData.cache_hit);
+
+    showViewState('content');
 
     // 1. Update Mode Indicator Badges
-    if (state.isSample) {
-      dom.modeIndicator.className = 'status-badge badge-sample';
-      dom.modeIndicatorText.textContent = 'SAMPLE MODE';
-      dom.dossierTypeBadge.textContent = 'SAMPLE DOSSIER';
-      dom.dossierSourceTag.textContent = 'DATA SOURCE: SAMPLE PACKET (VERIFIED)';
-      dom.footerDataSource.textContent = 'Sample Evidence Packet (Verified Authentic)';
-    } else {
-      dom.modeIndicator.className = 'status-badge badge-live';
-      dom.modeIndicatorText.textContent = 'LIVE INVESTIGATION';
-      dom.dossierTypeBadge.textContent = 'LIVE PR DOSSIER';
-      dom.dossierSourceTag.textContent = 'DATA SOURCE: GITHUB REST API';
-      dom.footerDataSource.textContent = 'Live GitHub REST API';
+    if (dom.modeIndicator && dom.modeIndicatorText) {
+      dom.modeIndicator.style.display = 'inline-flex';
+      if (dossierData.cache_hit) {
+        dom.modeIndicator.className = 'status-badge badge-cached';
+        dom.modeIndicatorText.textContent = 'CACHED';
+        dom.dossierTypeBadge.textContent = 'CACHED PR DOSSIER';
+        dom.dossierSourceTag.textContent = `DATA SOURCE: CACHE (${dossierData.cache_label || 'cached'})`;
+        dom.footerDataSource.textContent = (dossierData.metadata && dossierData.metadata.dataSource) || 'Local Cache';
+      } else {
+        dom.modeIndicator.className = 'status-badge badge-live';
+        dom.modeIndicatorText.textContent = 'LIVE INVESTIGATION';
+        dom.dossierTypeBadge.textContent = 'LIVE PR DOSSIER';
+        dom.dossierSourceTag.textContent = 'DATA SOURCE: GITHUB REST API';
+        dom.footerDataSource.textContent = (dossierData.metadata && dossierData.metadata.dataSource) || 'GitHub REST API (Live)';
+      }
     }
 
     // 2. Toolbar & Metadata
@@ -686,14 +609,14 @@
     // 5. Changed Files List
     clearElement(dom.changedFilesList);
     const files = dossierData.files || [];
-    dom.fileCountBadge.textContent = `${files.length || 1} file changed`;
+    dom.fileCountBadge.textContent = `${files.length} file${files.length === 1 ? '' : 's'} changed`;
     const tabFileBadge = document.getElementById('tab-file-count-badge');
     if (tabFileBadge) {
-      tabFileBadge.textContent = String(files.length || 1);
+      tabFileBadge.textContent = String(files.length);
     }
     if (files.length === 0) {
       const item = createEl('li', 'file-item');
-      item.appendChild(createEl('span', 'file-path', 'requests/adapters.py'));
+      item.appendChild(createEl('span', 'file-path', 'No files modified'));
       dom.changedFilesList.appendChild(item);
     } else {
       files.forEach(f => {
@@ -713,11 +636,11 @@
 
     // 6. Diff Code Panel
     const rawDiff = dossierData.diff || '';
-    dom.diffFilePathText.textContent = (files[0] && files[0].path) || 'requests/adapters.py';
+    dom.diffFilePathText.textContent = (files[0] && (files[0].path || files[0].filename)) || 'Diff excerpt';
     parseAndRenderDiff(rawDiff);
 
     // 7. Assessment Section
-    renderAssessment(dossierData.assessment || {});
+    renderAssessment(dossierData.assessment || dossierData.data || {});
 
     // 8. Partial-Data & Quarantine State Checking (Real Counts)
     const evidenceList = (dossierData.assessment && dossierData.assessment.evidence) || [];
@@ -745,76 +668,195 @@
       dom.statePartialDataBanner.style.display = 'none';
     }
 
-    // 9. Footer Info
+    // 9. Footer Info & Re-run Live
     if (dossierData.metadata) {
       if (dossierData.metadata.auditedAt) dom.footerTimestamp.textContent = dossierData.metadata.auditedAt;
       if (dossierData.metadata.assessorModel) dom.footerModelName.textContent = dossierData.metadata.assessorModel;
+      if (dossierData.metadata.dataSource) dom.footerDataSource.textContent = dossierData.metadata.dataSource;
+    } else if (dossierData.cached_on) {
+      dom.footerTimestamp.textContent = dossierData.cached_on;
+      dom.footerDataSource.textContent = `Cache (${dossierData.cache_label || 'cached'})`;
     }
 
-    // 10. Update Queue UI & Show Content
-    updateQueueList(dossierData);
+    if (dom.btnRerunLive) {
+      dom.btnRerunLive.style.display = dossierData.cache_hit ? 'inline-block' : 'none';
+    }
+
+    // 10. Show Content
     switchDossierTab('tab-overview');
     showViewState('content');
   }
 
   // ============================================================================
-  // Queue Management
+  // Typed Error Presentation
   // ============================================================================
-  function updateQueueList(activeDossier) {
-    const slug = `${activeDossier.pr.owner}/${activeDossier.pr.repo}#${activeDossier.pr.pull_number}`;
-    
-    // Check if item already in queue
-    const existingIdx = state.queue.findIndex(item => item.slug === slug);
-    if (existingIdx === -1) {
-      state.queue.unshift({
-        slug: slug,
-        dossier: activeDossier,
-        isSample: activeDossier.isSample
-      });
+  function showError(errorType, message, details) {
+    showViewState('error');
+    if (dom.errorTitle) {
+      if (errorType === 'invalid_repo' || errorType === 'invalid_input') {
+        dom.errorTitle.textContent = 'Invalid Repository or PR Input';
+      } else if (errorType === 'not_found') {
+        dom.errorTitle.textContent = 'Repository or PR Not Found';
+      } else if (errorType === 'rate_limit') {
+        dom.errorTitle.textContent = 'GitHub Rate Limit Exceeded';
+      } else if (errorType === 'no_prs') {
+        dom.errorTitle.textContent = 'No Open Pull Requests';
+      } else if (errorType === 'network_error') {
+        dom.errorTitle.textContent = 'GitHub API Connection Error';
+      } else if (errorType === 'model_unavailable') {
+        dom.errorTitle.textContent = 'Gemma 4 Service Unavailable';
+      } else if (errorType === 'invalid_model_output') {
+        dom.errorTitle.textContent = 'Invalid Model Response';
+      } else {
+        dom.errorTitle.textContent = 'Investigation Error';
+      }
     }
 
-    clearElement(dom.queueList);
-    dom.queueCount.textContent = `${state.queue.length} item${state.queue.length === 1 ? '' : 's'}`;
+    if (dom.errorMessageText) {
+      dom.errorMessageText.textContent = message || 'An error occurred during triage processing.';
+    }
 
-    state.queue.forEach((item, index) => {
-      const li = createEl('li', 'queue-item');
-      if (item.slug === slug) {
-        li.classList.add('active');
+    if (details && dom.errorDetailsContainer && dom.errorDetailsCode) {
+      dom.errorDetailsContainer.style.display = 'block';
+      dom.errorDetailsCode.textContent = String(details);
+    } else if (dom.errorDetailsContainer) {
+      dom.errorDetailsContainer.style.display = 'none';
+    }
+  }
+
+  // ============================================================================
+  // Input Routing & Pull Request Queue Loading (POST /api/prs)
+  // ============================================================================
+  function isPRReference(inputStr) {
+    const raw = (inputStr || '').trim();
+    return raw.includes('#') || raw.includes('/pull/');
+  }
+
+  async function handleInputSubmit(rawInput) {
+    const cleanInput = (rawInput || '').trim();
+    if (!cleanInput) {
+      showError('invalid_input', 'Please enter a GitHub repository (e.g. pallets/flask) or a PR URL.');
+      dom.prUrlInput.focus();
+      return;
+    }
+
+    if (isPRReference(cleanInput)) {
+      await analyzePullRequest(cleanInput);
+    } else {
+      await loadRepoPullRequests(cleanInput);
+    }
+  }
+
+  async function loadRepoPullRequests(repoInput) {
+    const clean = repoInput.trim();
+    showViewState('loading');
+
+    const steps = [
+      document.getElementById('load-step-1'),
+      document.getElementById('load-step-2'),
+      document.getElementById('load-step-3'),
+      document.getElementById('load-step-4')
+    ];
+    if (steps[0]) {
+      steps[0].className = 'timeline-step step-active';
+      const textSpan = steps[0].querySelector('.step-text');
+      if (textSpan) textSpan.textContent = `Fetching PR list for ${clean}…`;
+    }
+    for (let i = 1; i < steps.length; i++) {
+      if (steps[i]) steps[i].className = 'timeline-step';
+    }
+
+    try {
+      const response = await fetch('/api/prs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo: clean })
+      });
+
+      const resData = await response.json();
+      if (!response.ok || resData.status === 'error') {
+        const errType = resData.error_type || 'server_error';
+        const errMsg = resData.error || `HTTP ${response.status}: Failed to fetch repository PRs`;
+        const details = resData.details || errMsg;
+        showError(errType, errMsg, details);
+        return;
       }
 
+      const prList = resData.prs || [];
+      state.currentRepo = resData.repo;
+
+      if (prList.length === 0) {
+        showViewState('empty');
+        if (dom.queueCount) dom.queueCount.textContent = '0 items';
+        if (dom.queueList) {
+          clearElement(dom.queueList);
+          const emptyItem = createEl('li', 'queue-empty-item', `No open PRs found for ${resData.repo}`);
+          dom.queueList.appendChild(emptyItem);
+        }
+        showError('no_prs', `No open pull requests found for '${resData.repo}'.`, 'GitHub reports 0 open pull requests.');
+        return;
+      }
+
+      // Render Queue List (Limit 10)
+      renderPRQueue(resData.repo, prList);
+
+      // Set desk view to empty state with instructions
+      showViewState('empty');
+      const emptyTitle = dom.stateEmpty.querySelector('.empty-title');
+      const emptyDesc = dom.stateEmpty.querySelector('.empty-desc');
+      if (emptyTitle) emptyTitle.textContent = `${resData.repo} (${prList.length} open PR${prList.length === 1 ? '' : 's'})`;
+      if (emptyDesc) emptyDesc.textContent = 'Select a pull request from the queue on the left to analyze evidence, inspect unified diffs, and verify quotes with Gemma 4.';
+
+    } catch (err) {
+      showError('network_error', 'Failed to connect to backend server.', String(err.message || err));
+    }
+  }
+
+  function renderPRQueue(repoSlug, prList) {
+    if (!dom.queueList || !dom.queueCount) return;
+    clearElement(dom.queueList);
+    dom.queueCount.textContent = `${prList.length} item${prList.length === 1 ? '' : 's'}`;
+
+    prList.forEach(pr => {
+      const li = createEl('li', 'queue-item');
+      li.id = `queue-pr-${pr.number}`;
       li.tabIndex = 0;
       li.setAttribute('role', 'option');
-      li.setAttribute('aria-selected', item.slug === slug ? 'true' : 'false');
 
       const header = createEl('div', 'queue-item-header');
-      const repoSpan = createEl('span', 'queue-item-repo', item.slug);
-      const badgeSpan = createEl('span', [
-        'queue-item-badge',
-        item.isSample ? 'badge-sample' : 'badge-live'
-      ], item.isSample ? 'SAMPLE' : 'LIVE');
+      const prSlugSpan = createEl('span', 'queue-item-repo', `${repoSlug}#${pr.number}`);
+      const stateBadge = createEl('span', ['queue-item-badge', 'badge-live'], 'OPEN');
+      header.appendChild(prSlugSpan);
+      header.appendChild(stateBadge);
 
-      header.appendChild(repoSpan);
-      header.appendChild(badgeSpan);
+      const title = createEl('div', 'queue-item-title', pr.title || 'Untitled Pull Request');
 
-      const title = createEl('div', 'queue-item-title', item.dossier.pr.title || 'Pull Request');
       const meta = createEl('div', 'queue-item-meta');
-      const verifiedCount = (item.dossier.assessment && item.dossier.assessment.evidence)
-        ? item.dossier.assessment.evidence.filter(e => e.verified).length
-        : 0;
-      meta.textContent = `${verifiedCount} verified facts`;
+      const authorText = pr.author ? `@${pr.author}` : '';
+      const updatedText = pr.updated_at ? pr.updated_at.substring(0, 10) : '';
+      meta.textContent = [authorText, updatedText].filter(Boolean).join(' • ');
 
       li.appendChild(header);
       li.appendChild(title);
       li.appendChild(meta);
 
+      // On Click -> Calls POST /api/analyze for that single PR!
       li.addEventListener('click', () => {
-        loadDossierIntoDesk(item.dossier);
+        const allItems = dom.queueList.querySelectorAll('.queue-item');
+        allItems.forEach(item => item.classList.remove('active'));
+        li.classList.add('active');
+
+        analyzePullRequest({
+          repo: repoSlug,
+          number: pr.number,
+          pr_url: pr.html_url
+        });
       });
 
       li.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          loadDossierIntoDesk(item.dossier);
+          li.click();
         }
       });
 
@@ -823,20 +865,38 @@
   }
 
   // ============================================================================
-  // Pull Request Assessment Orchestration (POST /api/assess)
+  // Single Pull Request Assessment Orchestration (POST /api/analyze)
   // ============================================================================
-  async function analyzePullRequest(prInput) {
-    const cleanInput = (prInput || '').trim();
-    if (!cleanInput) {
-      alert('Please enter a valid GitHub pull request URL or identifier.');
-      dom.prUrlInput.focus();
-      return;
+  async function analyzePullRequest(target) {
+    let payload = {};
+
+    if (typeof target === 'string') {
+      const cleanInput = target.trim();
+      const refMatch = cleanInput.match(/^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)#(\d+)$/);
+      const urlMatch = cleanInput.match(/^https?:\/\/github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)\/pull\/(\d+)/);
+      if (refMatch) {
+        payload = {
+          owner: refMatch[1],
+          repo: refMatch[2],
+          pull_number: parseInt(refMatch[3], 10),
+          pr_url: `https://github.com/${refMatch[1]}/${refMatch[2]}/pull/${refMatch[3]}`
+        };
+      } else if (urlMatch) {
+        payload = {
+          owner: urlMatch[1],
+          repo: urlMatch[2],
+          pull_number: parseInt(urlMatch[3], 10),
+          pr_url: cleanInput
+        };
+      } else {
+        payload = { pr_url: cleanInput };
+      }
+    } else if (typeof target === 'object' && target !== null) {
+      payload = Object.assign({}, target);
     }
 
-    // Set UI to loading state
     showViewState('loading');
 
-    // 4-step progress list: real progress tracking
     const steps = [
       document.getElementById('load-step-1'),
       document.getElementById('load-step-2'),
@@ -844,83 +904,99 @@
       document.getElementById('load-step-4')
     ];
 
-    steps.forEach(s => {
-      if (s) s.className = 'timeline-step';
+    const stepLabels = [
+      'Fetching PR facts',
+      'Reading changed files',
+      'Gemma assessing',
+      'Verifying quotes'
+    ];
+    steps.forEach((s, i) => {
+      if (s) {
+        s.className = 'timeline-step';
+        const txt = s.querySelector('.step-text');
+        if (txt) txt.textContent = stepLabels[i];
+      }
     });
+
     if (steps[0]) steps[0].className = 'timeline-step step-active';
 
     try {
-      const payload = { pr_url: cleanInput };
-      const refMatch = cleanInput.match(/^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)#(\d+)$/);
-      const urlMatch = cleanInput.match(/^https?:\/\/github\.com\/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)\/pull\/(\d+)/);
-      if (refMatch) {
-        payload.owner = refMatch[1];
-        payload.repo = refMatch[2];
-        payload.pull_number = parseInt(refMatch[3], 10);
-        payload.pr_url = `https://github.com/${refMatch[1]}/${refMatch[2]}/pull/${refMatch[3]}`;
-      } else if (urlMatch) {
-        payload.owner = urlMatch[1];
-        payload.repo = urlMatch[2];
-        payload.pull_number = parseInt(urlMatch[3], 10);
-      }
-
-      const response = await fetch('/api/assess', {
+      const response = await fetch('/api/analyze', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
-      if (!response.ok) {
-        let errText = `HTTP Error ${response.status}: ${response.statusText}`;
-        try {
-          const errJson = await response.json();
-          if (errJson && errJson.error) {
-            errText = errJson.error;
-          }
-        } catch {
-          // Response body was not JSON
-        }
-        throw new Error(errText);
-      }
-
       const resData = await response.json();
-      if (resData.status === 'error') {
-        throw new Error(resData.error || 'Server reported assessment error');
+
+      if (!response.ok || resData.status === 'error') {
+        const errType = resData.error_type || 'server_error';
+        const errMsg = resData.error || `HTTP ${response.status}: Analysis failed`;
+        const details = resData.details || errMsg;
+        showError(errType, errMsg, details);
+        setGemmaSignal('error', errMsg.substring(0, 20));
+        return;
       }
 
-      // Mark all progress steps completed when real response arrives
+      // Mark all completed stages
       steps.forEach(s => {
         if (s) s.className = 'timeline-step step-done';
       });
 
-      // Mark real Gemma inference call succeeded
       if (resData.model) currentGemmaModel = resData.model;
       setGemmaSignal('online');
 
-      // Successful live response
-      const liveDossier = {
-        isSample: false,
-        pr: resData.pr,
-        files: resData.files || [],
-        diff: resData.diff || '',
-        assessment: resData.data,
-        metadata: {
-          dataSource: 'GitHub REST API (Live)',
-          auditedAt: new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC',
-          assessorModel: resData.model || 'gemma-4-26b-a4b-it via REST API'
+      // Update PR queue active item badge if in queue
+      const prNumber = resData.pull_number || (resData.pr && resData.pr.number);
+      if (prNumber) {
+        const qItem = document.getElementById(`queue-pr-${prNumber}`);
+        if (qItem) {
+          const badge = qItem.querySelector('.queue-item-badge');
+          if (badge) {
+            badge.className = `queue-item-badge ${resData.cache_hit ? 'badge-cached' : 'badge-live'}`;
+            badge.textContent = resData.cache_hit ? 'CACHED' : 'LIVE';
+          }
+          const meta = qItem.querySelector('.queue-item-meta');
+          const assessmentObj = resData.assessment || resData.data || {};
+          const verifiedFacts = (assessmentObj.evidence || []).filter(e => e.verified).length;
+          if (meta) {
+            meta.textContent = `@${resData.pr.author || 'author'} • ${verifiedFacts} verified facts`;
+          }
+        } else {
+          // Direct PR URL analyzed; prepend to queue
+          const prSlug = resData.repo ? `${resData.repo}#${prNumber}` : `#${prNumber}`;
+          const li = createEl('li', ['queue-item', 'active']);
+          li.id = `queue-pr-${prNumber}`;
+          li.tabIndex = 0;
+          const header = createEl('div', 'queue-item-header');
+          header.appendChild(createEl('span', 'queue-item-repo', prSlug));
+          header.appendChild(createEl('span', ['queue-item-badge', resData.cache_hit ? 'badge-cached' : 'badge-live'], resData.cache_hit ? 'CACHED' : 'LIVE'));
+          const title = createEl('div', 'queue-item-title', (resData.pr && resData.pr.title) || 'Pull Request');
+          const meta = createEl('div', 'queue-item-meta');
+          const assessmentObj = resData.assessment || resData.data || {};
+          const verifiedFacts = (assessmentObj.evidence || []).filter(e => e.verified).length;
+          meta.textContent = `@${(resData.pr && resData.pr.author) || 'author'} • ${verifiedFacts} verified facts`;
+          li.appendChild(header);
+          li.appendChild(title);
+          li.appendChild(meta);
+          li.addEventListener('click', () => loadDossierIntoDesk(resData));
+          if (dom.queueList) {
+            const emptyItems = dom.queueList.querySelectorAll('.queue-empty-item');
+            emptyItems.forEach(el => el.remove());
+            dom.queueList.prepend(li);
+            if (dom.queueCount) {
+              const count = dom.queueList.querySelectorAll('.queue-item').length;
+              dom.queueCount.textContent = `${count} item${count === 1 ? '' : 's'}`;
+            }
+          }
         }
-      };
+      }
 
-      loadDossierIntoDesk(liveDossier);
+      loadDossierIntoDesk(resData);
 
     } catch (err) {
-      showViewState('error');
-      setGemmaSignal('error', err.message ? err.message.substring(0, 16) : 'Failed');
-      dom.errorMessageText.textContent = err.message || 'Unable to retrieve and assess pull request.';
-      dom.errorDetailsContainer.style.display = 'block';
-      dom.errorDetailsCode.textContent = String(err.stack || err);
+      showError('network_error', 'Connection to analysis endpoint failed.', String(err.message || err));
+      setGemmaSignal('error', 'Network error');
     }
   }
 
@@ -978,21 +1054,6 @@
     if (btnLandingOpen) btnLandingOpen.addEventListener('click', () => switchAppView('workspace'));
     if (btnLandingOpenNav) btnLandingOpenNav.addEventListener('click', () => switchAppView('workspace'));
 
-    const btnLandingSample = document.getElementById('btn-landing-sample');
-    const btnLandingSampleNav = document.getElementById('btn-landing-sample-nav');
-    if (btnLandingSample) {
-      btnLandingSample.addEventListener('click', () => {
-        switchAppView('workspace');
-        loadDossierIntoDesk(SAMPLE_PR_DATA);
-      });
-    }
-    if (btnLandingSampleNav) {
-      btnLandingSampleNav.addEventListener('click', () => {
-        switchAppView('workspace');
-        loadDossierIntoDesk(SAMPLE_PR_DATA);
-      });
-    }
-
     // Workspace Home link
     const btnNavHome = document.getElementById('btn-nav-home');
     if (btnNavHome) btnNavHome.addEventListener('click', () => switchAppView('landing'));
@@ -1007,31 +1068,42 @@
     });
 
     // Form submission & buttons
-    dom.btnAnalyze.addEventListener('click', () => {
-      analyzePullRequest(dom.prUrlInput.value);
-    });
+    if (dom.btnAnalyze) {
+      dom.btnAnalyze.addEventListener('click', () => {
+        handleInputSubmit(dom.prUrlInput.value);
+      });
+    }
 
-    dom.prUrlInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        analyzePullRequest(dom.prUrlInput.value);
-      }
-    });
+    if (dom.prUrlInput) {
+      dom.prUrlInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          handleInputSubmit(dom.prUrlInput.value);
+        }
+      });
+    }
 
-    dom.btnLoadSample.addEventListener('click', () => {
-      loadDossierIntoDesk(SAMPLE_PR_DATA);
-    });
+    if (dom.btnErrorRetry) {
+      dom.btnErrorRetry.addEventListener('click', () => {
+        handleInputSubmit(dom.prUrlInput.value);
+      });
+    }
 
-    dom.btnEmptySample.addEventListener('click', () => {
-      loadDossierIntoDesk(SAMPLE_PR_DATA);
-    });
-
-    dom.btnErrorSample.addEventListener('click', () => {
-      loadDossierIntoDesk(SAMPLE_PR_DATA);
-    });
-
-    dom.btnErrorRetry.addEventListener('click', () => {
-      analyzePullRequest(dom.prUrlInput.value);
-    });
+    if (dom.btnRerunLive) {
+      dom.btnRerunLive.addEventListener('click', () => {
+        if (state.currentPR) {
+          const pr = state.currentPR;
+          const repo = (pr.owner && pr.repo) ? `${pr.owner}/${pr.repo}` : state.currentRepo;
+          const number = pr.pull_number || pr.number;
+          if (repo && number) {
+            analyzePullRequest({
+              repo: repo,
+              number: number,
+              force_live: true
+            });
+          }
+        }
+      });
+    }
 
     dom.btnDismissAlert.addEventListener('click', () => {
       dom.stateModelUnavailable.style.display = 'none';
@@ -1065,8 +1137,14 @@
     // Check backend health
     checkBackendHealth();
 
-    // Default load: Load the authentic, verified Sample PR with clear SAMPLE label into desk
-    loadDossierIntoDesk(SAMPLE_PR_DATA);
+    // Default state: empty state ("Enter a public repository")
+    showViewState('empty');
+    if (dom.queueCount) dom.queueCount.textContent = '0 items';
+    if (dom.queueList) {
+      clearElement(dom.queueList);
+      const emptyItem = createEl('li', 'queue-empty-item', 'Enter a repository to load PRs');
+      dom.queueList.appendChild(emptyItem);
+    }
 
     // Default view on first load: Landing view
     switchAppView('landing');

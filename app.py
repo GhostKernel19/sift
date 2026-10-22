@@ -110,17 +110,23 @@ def _save_cached_analysis(owner: str, repo: str, pull_number: int, data: dict[st
         logger.warning(f"Failed to write disk cache for {owner}/{repo}#{pull_number}: {e}")
 
 
-def _error_response(error_type: str, message: str, details: str = "", status_code: int = 400) -> tuple[Any, int]:
+def _error_response(
+    error_type: str,
+    message: str,
+    details: str = "",
+    status_code: int = 400,
+    retry_delay: Optional[int] = None,
+) -> tuple[Any, int]:
     """Builds a standardized typed error JSON response."""
-    return (
-        jsonify({
-            "status": "error",
-            "error_type": error_type,
-            "error": message,
-            "details": details or message,
-        }),
-        status_code,
-    )
+    payload: dict[str, Any] = {
+        "status": "error",
+        "error_type": error_type,
+        "error": message,
+        "details": details or message,
+    }
+    if retry_delay is not None:
+        payload["retry_delay"] = retry_delay
+    return jsonify(payload), status_code
 
 
 # ============================================================================
@@ -180,7 +186,7 @@ def list_prs() -> Any:
 
     token = os.getenv("GITHUB_TOKEN")
     try:
-        prs = fetch_open_prs(owner, repo_name, n=15, token=token, fetch_details=False)
+        prs = fetch_open_prs(owner, repo_name, n=10, token=token, fetch_details=False)
         return jsonify({
             "status": "success",
             "repo": f"{owner}/{repo_name}",
@@ -261,24 +267,26 @@ def analyze_pr() -> Any:
     # ------------------------------------------------------------------------
     # 1. Cache Inspection
     # ------------------------------------------------------------------------
-    cached = _get_cached_analysis(owner, repo, pull_number)
-    if cached is not None:
-        cached_time = cached.get("cached_at") or cached.get("cached_on") or "earlier"
-        cache_label = f"cached on {cached_time}"
-        response_payload = dict(cached)
-        response_payload["status"] = "success"
-        response_payload["cache_hit"] = True
-        response_payload["cached_on"] = cached_time
-        response_payload["cache_label"] = cache_label
-        response_payload["cached_notice"] = cache_label
+    force_live = bool(body.get("force_live") or body.get("refresh"))
+    if not force_live:
+        cached = _get_cached_analysis(owner, repo, pull_number)
+        if cached is not None:
+            cached_time = cached.get("cached_at") or cached.get("cached_on") or "earlier"
+            cache_label = f"cached on {cached_time}"
+            response_payload = dict(cached)
+            response_payload["status"] = "success"
+            response_payload["cache_hit"] = True
+            response_payload["cached_on"] = cached_time
+            response_payload["cache_label"] = cache_label
+            response_payload["cached_notice"] = cache_label
 
-        # Ensure metadata reflects cache hit
-        metadata = dict(response_payload.get("metadata") or {})
-        metadata["dataSource"] = f"Cache ({cache_label})"
-        metadata["cached_on"] = cached_time
-        response_payload["metadata"] = metadata
+            # Ensure metadata reflects cache hit
+            metadata = dict(response_payload.get("metadata") or {})
+            metadata["dataSource"] = f"Cache ({cache_label})"
+            metadata["cached_on"] = cached_time
+            response_payload["metadata"] = metadata
 
-        return jsonify(response_payload), 200
+            return jsonify(response_payload), 200
 
     # ------------------------------------------------------------------------
     # 2. Live GitHub Data Retrieval
@@ -336,7 +344,16 @@ def analyze_pr() -> Any:
         err_type = assessment_result.get("error_type", "provider_error")
         err_msg = assessment_result.get("error", "Gemma assessment failed.")
         details = assessment_result.get("details", err_msg)
-        if err_type in ("config_error", "timeout", "provider_error"):
+        if err_type == "rate_limit":
+            retry_delay = assessment_result.get("retry_delay") or 15
+            return _error_response(
+                "rate_limit",
+                "Rate limited by the free Gemini tier.",
+                details="Rate limit reached on Gemini API. Please wait for the quota window to reset.",
+                status_code=429,
+                retry_delay=retry_delay,
+            )
+        elif err_type in ("config_error", "timeout", "provider_error"):
             return _error_response("model_unavailable", err_msg, details=details, status_code=503)
         elif err_type == "invalid_output":
             return _error_response("invalid_model_output", err_msg, details=details, status_code=502)
@@ -378,6 +395,7 @@ def analyze_pr() -> Any:
         "diff": pr_diff,
         "data": assessment_result,       # Expected by frontend: static/js/app.js line 817
         "assessment": assessment_result, # Standard alias
+        "packet": packet,
         "diff_summary": diff_summary,
         "diff_truncated": is_diff_truncated,
         "is_partial": is_diff_truncated,

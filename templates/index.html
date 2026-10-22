@@ -32,8 +32,7 @@
           </div>
         </div>
         <div class="landing-header-actions">
-          <button type="button" id="btn-landing-open-nav" class="btn btn-secondary btn-sm">Open Workspace</button>
-          <button type="button" id="btn-landing-sample-nav" class="btn btn-primary btn-sm">Try Sample PR</button>
+          <button type="button" id="btn-landing-open-nav" class="btn btn-primary btn-sm">Open Workspace</button>
         </div>
       </header>
 
@@ -49,10 +48,6 @@
             <button type="button" id="btn-landing-open" class="btn btn-primary btn-lg">
               <span>Open workspace</span>
               <span aria-hidden="true">&rarr;</span>
-            </button>
-            <button type="button" id="btn-landing-sample" class="btn btn-secondary btn-lg">
-              <span>Try sample PR</span>
-              <span aria-hidden="true">&nearr;</span>
             </button>
           </div>
         </section>
@@ -200,17 +195,14 @@
               <span aria-hidden="true">&#128269;</span>
               <span class="btn-text">Analyze</span>
             </button>
-            <button type="button" id="btn-load-sample" class="btn btn-secondary btn-sm btn-sample-top" title="Load authentic verified sample PR">
-              <span>Sample PR</span>
-            </button>
           </div>
         </div>
 
         <div class="workspace-status-right">
-          <!-- SAMPLE/LIVE label clearly in the top bar -->
-          <div id="mode-indicator" class="status-badge badge-sample" aria-live="polite">
+          <!-- Cache / Live indicator in top bar -->
+          <div id="mode-indicator" class="status-badge" aria-live="polite" style="display: none;">
             <span class="badge-dot" aria-hidden="true"></span>
-            <span id="mode-indicator-text" class="badge-label">SAMPLE MODE</span>
+            <span id="mode-indicator-text" class="badge-label">READY</span>
           </div>
 
           <!-- Health / Model Status -->
@@ -228,7 +220,7 @@
         <aside class="col-queue" id="col-queue" aria-label="Pull Request Queue">
           <div class="panel-header">
             <h2 class="panel-title">PR Queue</h2>
-            <span class="panel-count" id="queue-count">1 item</span>
+            <span class="panel-count" id="queue-count">0 items</span>
           </div>
 
           <div class="queue-list-container">
@@ -244,11 +236,12 @@
           <div class="desk-toolbar">
             <div class="dossier-id-box">
               <span class="dossier-pill" id="dossier-type-badge">PR DOSSIER</span>
-              <span class="dossier-slug" id="dossier-slug">psf/requests#6541</span>
-              <span class="branch-pill" id="branch-info">main &larr; fix/timeout-handling</span>
+              <span class="dossier-slug" id="dossier-slug">—</span>
+              <span class="branch-pill" id="branch-info">—</span>
             </div>
             <div class="toolbar-actions">
-              <span class="source-tag" id="dossier-source-tag">DATA SOURCE: SAMPLE PACKET</span>
+              <span class="source-tag" id="dossier-source-tag">DATA SOURCE: —</span>
+              <button type="button" id="btn-rerun-live" class="btn btn-secondary btn-sm" style="display: none;" title="Bypass cache and re-run live GitHub analysis">Re-run live</button>
               <a href="#" id="view-on-github-link" class="btn-link" target="_blank" rel="noopener noreferrer">
                 <span>GitHub</span>
                 <span aria-hidden="true">&nearr;</span>
@@ -259,14 +252,13 @@
           <!-- Center Panel State Displays -->
 
           <!-- State: Empty -->
-          <div id="state-empty" class="desk-state-view desk-state-empty" style="display: none;">
+          <div id="state-empty" class="desk-state-view desk-state-empty">
             <div class="empty-dossier-box">
               <div class="empty-icon" aria-hidden="true">&#128194;</div>
-              <h3 class="empty-title">Desk Ready for Investigation</h3>
+              <h3 class="empty-title">Enter a public repository</h3>
               <p class="empty-desc">
-                Paste a GitHub Pull Request URL into the input above, or load the verified sample PR to inspect evidence retrieval and quotations.
+                Enter a public repository (e.g. owner/repo, a GitHub repo URL, or owner/repo#123) above to triage pull requests.
               </p>
-              <button type="button" class="btn btn-primary" id="btn-empty-sample">Load Sample Dossier</button>
             </div>
           </div>
 
@@ -305,7 +297,6 @@
               <p class="error-message" id="error-message-text">Error message text here</p>
               <div class="error-actions">
                 <button type="button" class="btn btn-secondary" id="btn-error-retry">Retry Request</button>
-                <button type="button" class="btn btn-primary" id="btn-error-sample">Switch to Verified Sample PR</button>
               </div>
               <div class="error-details-box" id="error-details-container" style="display: none;">
                 <span class="error-details-label">Diagnostics:</span>
@@ -320,7 +311,7 @@
             <div class="alert-content">
               <h4 class="alert-title">Gemma 4 Backend Unconfigured</h4>
               <p class="alert-text">
-                The <span class="code-ref">GEMINI_API_KEY</span> environment variable is not set. You can explore the complete desk workflow using our authentic verified <strong>Sample PR</strong>.
+                The <span class="code-ref">GEMINI_API_KEY</span> environment variable is not set. Please configure it in your <span class="code-ref">.env</span> file to enable Gemma 4 triage assessments.
               </p>
             </div>
             <button type="button" class="btn btn-secondary btn-sm" id="btn-dismiss-alert">Dismiss</button>
@@ -335,6 +326,18 @@
                 1 of 4 quotes could not be verified in the source.
               </p>
             </div>
+          </div>
+
+          <!-- State: Live Run Failed Notice Banner -->
+          <div id="state-live-failure-banner" class="desk-alert-banner alert-warning" style="display: none;">
+            <div class="alert-icon" aria-hidden="true">&#9888;</div>
+            <div class="alert-content">
+              <h4 class="alert-title">Live Re-Run Failed — Showing Cached Analysis</h4>
+              <p class="alert-text" id="live-failure-text">
+                Live run failed. Showing cached result from earlier.
+              </p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-dismiss-live-failure">Dismiss</button>
           </div>
 
           <!-- State: Content (Center Dossier with TABS) -->
@@ -361,7 +364,7 @@
                 <article class="paper-card" id="card-metadata">
                   <div class="paper-stamp-row">
                     <span class="paper-stamp">PR METADATA</span>
-                    <span class="paper-pr-number" id="pr-number-badge">#6541</span>
+                    <span class="paper-pr-number" id="pr-number-badge">#—</span>
                   </div>
 
                   <h2 class="pr-headline" id="pr-headline-text">Loading title…</h2>
@@ -444,6 +447,12 @@
           <div class="panel-header">
             <h2 class="panel-title">Assessment</h2>
             <span class="model-badge" id="assessor-model-badge">Gemma 4 (26B)</span>
+          </div>
+
+          <!-- Empty / Inactive state placeholder for right column -->
+          <div id="assessment-empty-state" class="assessment-empty-state" style="display: none; padding: 2.5rem 1.5rem; text-align: center; color: var(--text-muted);">
+            <div style="font-size: 2rem; margin-bottom: 0.75rem;" aria-hidden="true">&#9776;</div>
+            <p style="font-size: 0.875rem; margin: 0;">No active assessment.</p>
           </div>
 
           <div class="assessment-scroll-area" id="assessment-scroll-area">
@@ -579,21 +588,21 @@
       <footer class="desk-footer" role="contentinfo">
         <div class="footer-item">
           <span class="footer-label">SOURCE:</span>
-          <span class="footer-value" id="footer-data-source">Sample Evidence Packet (Verified)</span>
+          <span class="footer-value" id="footer-data-source">—</span>
         </div>
         <div class="footer-separator" aria-hidden="true">&bull;</div>
         <div class="footer-item">
           <span class="footer-label">TIME:</span>
-          <span class="footer-value" id="footer-timestamp">2026-10-22 12:54:00 UTC</span>
+          <span class="footer-value" id="footer-timestamp">—</span>
         </div>
         <div class="footer-separator" aria-hidden="true">&bull;</div>
         <div class="footer-item">
           <span class="footer-label">ASSESSOR:</span>
-          <span class="footer-value" id="footer-model-name">gemma-4-26b-a4b-it via REST API</span>
+          <span class="footer-value" id="footer-model-name">—</span>
         </div>
         <div class="footer-spacer"></div>
         <div class="footer-principles">
-          <span>Substrings Verified</span> &bull; <span>Human in the Loop</span>
+          <span id="footer-verified-badge" style="display: none;"><span>Substrings Verified</span> &bull;&nbsp;</span><span>Human in the Loop</span>
         </div>
       </footer>
 

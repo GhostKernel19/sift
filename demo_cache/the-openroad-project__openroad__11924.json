@@ -1,0 +1,230 @@
+{
+  "status": "success",
+  "repo": "The-OpenROAD-Project/OpenROAD",
+  "pull_number": 11924,
+  "pr": {
+    "owner": "The-OpenROAD-Project",
+    "repo": "OpenROAD",
+    "number": 11924,
+    "title": "web: Lock renderer state before checking Tcl activity",
+    "body": "## Coverity Defect Log\n\n```text\n** CID 1688341:       Concurrent data access violations  (MISSING_LOCK)\r\n/src/web/src/web_serve.cpp: 333           in web::WebServer::serve(int, const std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> &)::[lambda(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) (instance 1)]::operator ()(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) const()\r\n\r\n\r\n_____________________________________________________________________________________________\r\n*** CID 1688341:         Concurrent data access violations  (MISSING_LOCK)\r\n/src/web/src/web_serve.cpp: 333             in web::WebServer::serve(int, const std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> &)::[lambda(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) (instance 1)]::operator ()(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) const()\r\n327           // typed in the browser during a script's pause -- only \"Live\" draws, at\r\n328           // the user's risk.  Holding renderer_mutex keeps a command from\r\n329           // starting, or resuming from its pause, mid-draw.\r\n330           std::shared_lock<std::shared_mutex> idle;\r\n331           if (!debug_live) {\r\n332             idle = std::shared_lock<std::shared_mutex>(tcl->renderer_mutex);\r\n>>>     CID 1688341:         Concurrent data access violations  (MISSING_LOCK)\r\n>>>     Accessing \"this->tcl->running\" without holding lock \"web::TclEvaluator.renderer_mutex\". Elsewhere, \"web::TclEvaluator.running\" is written to with \"TclEvaluator.renderer_mutex\" held 3 out of 3 times (1 of these accesses strongly imply that it is necessary).\r\n333             if (tcl->running) {\r\n334               tcl->draw_skipped = true;\r\n335               return;\r\n336             }\r\n337           }\r\n338           seedRendererControls(hook);\n```\n\n## Solution\n\n| CID | Defect type | Resolution |\n|---|---|---|\n| 1688341 | `MISSING_LOCK` | Acquire the deferred renderer shared lock explicitly before reading TclEvaluator::running on non-live draws. |\n\n## Related\n\n- https://github.com/The-OpenROAD-Project/OpenROAD/pull/11683\n",
+    "author": "jhkim-pii",
+    "author_association": "CONTRIBUTOR",
+    "state": "open",
+    "draft": false,
+    "created_at": "2026-10-22T04:54:17Z",
+    "updated_at": "2026-10-22T04:57:49Z",
+    "additions": 3,
+    "deletions": 2,
+    "changed_files": 1,
+    "base_branch": "master",
+    "head_branch": "coverity-fix-pr11683",
+    "html_url": "https://github.com/The-OpenROAD-Project/OpenROAD/pull/11924",
+    "labels": [
+      "size/XS"
+    ],
+    "pull_number": 11924
+  },
+  "files": [
+    {
+      "path": "src/web/src/web_serve.cpp",
+      "filename": "src/web/src/web_serve.cpp",
+      "additions": 3,
+      "deletions": 2,
+      "changes": 5,
+      "status": "modified",
+      "patch": "@@ -327,9 +327,10 @@ void WebServer::serve(int port, const std::string& bind_address)\n       // typed in the browser during a script's pause -- only \"Live\" draws, at\n       // the user's risk.  Holding renderer_mutex keeps a command from\n       // starting, or resuming from its pause, mid-draw.\n-      std::shared_lock<std::shared_mutex> idle;\n+      std::shared_lock<std::shared_mutex> idle(tcl->renderer_mutex,\n+                                               std::defer_lock);\n       if (!debug_live) {\n-        idle = std::shared_lock<std::shared_mutex>(tcl->renderer_mutex);\n+        idle.lock();\n         if (tcl->running) {\n           tcl->draw_skipped = true;\n           return;",
+      "truncated": false
+    }
+  ],
+  "diff": "diff --git a/src/web/src/web_serve.cpp b/src/web/src/web_serve.cpp\nindex 5435d25c604..abde7263c20 100644\n--- a/src/web/src/web_serve.cpp\n+++ b/src/web/src/web_serve.cpp\n@@ -327,9 +327,10 @@ void WebServer::serve(int port, const std::string& bind_address)\n       // typed in the browser during a script's pause -- only \"Live\" draws, at\n       // the user's risk.  Holding renderer_mutex keeps a command from\n       // starting, or resuming from its pause, mid-draw.\n-      std::shared_lock<std::shared_mutex> idle;\n+      std::shared_lock<std::shared_mutex> idle(tcl->renderer_mutex,\n+                                               std::defer_lock);\n       if (!debug_live) {\n-        idle = std::shared_lock<std::shared_mutex>(tcl->renderer_mutex);\n+        idle.lock();\n         if (tcl->running) {\n           tcl->draw_skipped = true;\n           return;\n",
+  "data": {
+    "summary": "Addresses a Coverity concurrency defect (MISSING_LOCK) by ensuring the renderer mutex is explicitly acquired before checking the Tcl running state.",
+    "recommendation": "review",
+    "priority_score": 3,
+    "confidence": "high",
+    "evidence": [
+      {
+        "claim": "The PR addresses a Coverity defect identified as a MISSING_LOCK concurrent data access violation.",
+        "source": "body",
+        "quote": "** CID 1688341:       Concurrent data access violations  (MISSING_LOCK)",
+        "verified": true
+      },
+      {
+        "claim": "The defect involves accessing 'this->tcl->running' without holding the 'web::TclEvaluator.renderer_mutex' lock.",
+        "source": "body",
+        "quote": "Accessing \"this->tcl->running\" without holding lock \"web::TclEvaluator.renderer_mutex\".",
+        "verified": true
+      },
+      {
+        "claim": "The fix implements the lock acquisition using std::defer_lock followed by an explicit .lock() call.",
+        "source": "diff",
+        "quote": "idle.lock();",
+        "verified": true
+      }
+    ],
+    "missing_context": [],
+    "suggested_response": "Hi @jhkim-pii, thank you for submitting this fix for the Coverity concurrency warning. The change to explicitly lock the renderer mutex before checking the Tcl running state looks correct. I've flagged this for maintainer review.",
+    "uncertainty_reason": ""
+  },
+  "assessment": {
+    "summary": "Addresses a Coverity concurrency defect (MISSING_LOCK) by ensuring the renderer mutex is explicitly acquired before checking the Tcl running state.",
+    "recommendation": "review",
+    "priority_score": 3,
+    "confidence": "high",
+    "evidence": [
+      {
+        "claim": "The PR addresses a Coverity defect identified as a MISSING_LOCK concurrent data access violation.",
+        "source": "body",
+        "quote": "** CID 1688341:       Concurrent data access violations  (MISSING_LOCK)",
+        "verified": true
+      },
+      {
+        "claim": "The defect involves accessing 'this->tcl->running' without holding the 'web::TclEvaluator.renderer_mutex' lock.",
+        "source": "body",
+        "quote": "Accessing \"this->tcl->running\" without holding lock \"web::TclEvaluator.renderer_mutex\".",
+        "verified": true
+      },
+      {
+        "claim": "The fix implements the lock acquisition using std::defer_lock followed by an explicit .lock() call.",
+        "source": "diff",
+        "quote": "idle.lock();",
+        "verified": true
+      }
+    ],
+    "missing_context": [],
+    "suggested_response": "Hi @jhkim-pii, thank you for submitting this fix for the Coverity concurrency warning. The change to explicitly lock the renderer mutex before checking the Tcl running state looks correct. I've flagged this for maintainer review.",
+    "uncertainty_reason": ""
+  },
+  "packet": {
+    "pr_facts": {
+      "owner": "The-OpenROAD-Project",
+      "repo": "OpenROAD",
+      "number": 11924,
+      "title": "web: Lock renderer state before checking Tcl activity",
+      "body": "## Coverity Defect Log\n\n```text\n** CID 1688341:       Concurrent data access violations  (MISSING_LOCK)\r\n/src/web/src/web_serve.cpp: 333           in web::WebServer::serve(int, const std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> &)::[lambda(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) (instance 1)]::operator ()(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) const()\r\n\r\n\r\n_____________________________________________________________________________________________\r\n*** CID 1688341:         Concurrent data access violations  (MISSING_LOCK)\r\n/src/web/src/web_serve.cpp: 333             in web::WebServer::serve(int, const std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> &)::[lambda(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) (instance 1)]::operator ()(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) const()\r\n327           // typed in the browser during a script's pause -- only \"Live\" draws, at\r\n328           // the user's risk.  Holding renderer_mutex keeps a command from\r\n329           // starting, or resuming from its pause, mid-draw.\r\n330           std::shared_lock<std::shared_mutex> idle;\r\n331           if (!debug_live) {\r\n332             idle = std::shared_lock<std::shared_mutex>(tcl->renderer_mutex);\r\n>>>     CID 1688341:         Concurrent data access violations  (MISSING_LOCK)\r\n>>>     Accessing \"this->tcl->running\" without holding lock \"web::TclEvaluator.renderer_mutex\". Elsewhere, \"web::TclEvaluator.running\" is written to with \"TclEvaluator.renderer_mutex\" held 3 out of 3 times (1 of these accesses strongly imply that it is necessary).\r\n333             if (tcl->running) {\r\n334               tcl->draw_skipped = true;\r\n335               return;\r\n336             }\r\n337           }\r\n338           seedRendererControls(hook);\n```\n\n## Solution\n\n| CID | Defect type | Resolution |\n|---|---|---|\n| 1688341 | `MISSING_LOCK` | Acquire the deferred renderer shared lock explicitly before reading TclEvaluator::running on non-live draws. |\n\n## Related\n\n- https://github.com/The-OpenROAD-Project/OpenROAD/pull/11683\n",
+      "author": "jhkim-pii",
+      "author_association": "CONTRIBUTOR",
+      "first_time_contributor": false,
+      "state": "open",
+      "draft": false,
+      "created_at": "2026-10-22T04:54:17Z",
+      "updated_at": "2026-10-22T04:57:49Z",
+      "additions": 3,
+      "deletions": 2,
+      "changed_files": 1,
+      "base_branch": "master",
+      "head_branch": "coverity-fix-pr11683",
+      "html_url": "https://github.com/The-OpenROAD-Project/OpenROAD/pull/11924",
+      "labels": [
+        "size/XS"
+      ],
+      "linked_issue_signal": "unknown",
+      "linked_issues": [],
+      "contributing_guidance_status": "present",
+      "contributing_guidance_path": "CONTRIBUTING.md"
+    },
+    "pr_info": {
+      "owner": "The-OpenROAD-Project",
+      "repo": "OpenROAD",
+      "number": 11924,
+      "title": "web: Lock renderer state before checking Tcl activity",
+      "body": "## Coverity Defect Log\n\n```text\n** CID 1688341:       Concurrent data access violations  (MISSING_LOCK)\r\n/src/web/src/web_serve.cpp: 333           in web::WebServer::serve(int, const std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> &)::[lambda(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) (instance 1)]::operator ()(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) const()\r\n\r\n\r\n_____________________________________________________________________________________________\r\n*** CID 1688341:         Concurrent data access violations  (MISSING_LOCK)\r\n/src/web/src/web_serve.cpp: 333             in web::WebServer::serve(int, const std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> &)::[lambda(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) (instance 1)]::operator ()(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) const()\r\n327           // typed in the browser during a script's pause -- only \"Live\" draws, at\r\n328           // the user's risk.  Holding renderer_mutex keeps a command from\r\n329           // starting, or resuming from its pause, mid-draw.\r\n330           std::shared_lock<std::shared_mutex> idle;\r\n331           if (!debug_live) {\r\n332             idle = std::shared_lock<std::shared_mutex>(tcl->renderer_mutex);\r\n>>>     CID 1688341:         Concurrent data access violations  (MISSING_LOCK)\r\n>>>     Accessing \"this->tcl->running\" without holding lock \"web::TclEvaluator.renderer_mutex\". Elsewhere, \"web::TclEvaluator.running\" is written to with \"TclEvaluator.renderer_mutex\" held 3 out of 3 times (1 of these accesses strongly imply that it is necessary).\r\n333             if (tcl->running) {\r\n334               tcl->draw_skipped = true;\r\n335               return;\r\n336             }\r\n337           }\r\n338           seedRendererControls(hook);\n```\n\n## Solution\n\n| CID | Defect type | Resolution |\n|---|---|---|\n| 1688341 | `MISSING_LOCK` | Acquire the deferred renderer shared lock explicitly before reading TclEvaluator::running on non-live draws. |\n\n## Related\n\n- https://github.com/The-OpenROAD-Project/OpenROAD/pull/11683\n",
+      "author": "jhkim-pii",
+      "author_association": "CONTRIBUTOR",
+      "first_time_contributor": false,
+      "state": "open",
+      "draft": false,
+      "created_at": "2026-10-22T04:54:17Z",
+      "updated_at": "2026-10-22T04:57:49Z",
+      "additions": 3,
+      "deletions": 2,
+      "changed_files": 1,
+      "base_branch": "master",
+      "head_branch": "coverity-fix-pr11683",
+      "html_url": "https://github.com/The-OpenROAD-Project/OpenROAD/pull/11924",
+      "labels": [
+        "size/XS"
+      ],
+      "linked_issue_signal": "unknown",
+      "linked_issues": [],
+      "contributing_guidance_status": "present",
+      "contributing_guidance_path": "CONTRIBUTING.md"
+    },
+    "sources": [
+      {
+        "id": "title",
+        "label": "PR Title",
+        "url": "https://github.com/The-OpenROAD-Project/OpenROAD/pull/11924",
+        "text": "web: Lock renderer state before checking Tcl activity"
+      },
+      {
+        "id": "body",
+        "label": "PR Body",
+        "url": "https://github.com/The-OpenROAD-Project/OpenROAD/pull/11924",
+        "text": "## Coverity Defect Log\n\n```text\n** CID 1688341:       Concurrent data access violations  (MISSING_LOCK)\r\n/src/web/src/web_serve.cpp: 333           in web::WebServer::serve(int, const std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> &)::[lambda(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) (instance 1)]::operator ()(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) const()\r\n\r\n\r\n_____________________________________________________________________________________________\r\n*** CID 1688341:         Concurrent data access violations  (MISSING_LOCK)\r\n/src/web/src/web_serve.cpp: 333             in web::WebServer::serve(int, const std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> &)::[lambda(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) (instance 1)]::operator ()(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) const()\r\n327           // typed in the browser during a script's pause -- only \"Live\" draws, at\r\n328           // the user's risk.  Holding renderer_mutex keeps a command from\r\n329           // starting, or resuming from its pause, mid-draw.\r\n330           std::shared_lock<std::shared_mutex> idle;\r\n331           if (!debug_live) {\r\n332             idle = std::shared_lock<std::shared_mutex>(tcl->renderer_mutex);\r\n>>>     CID 1688341:         Concurrent data access violations  (MISSING_LOCK)\r\n>>>     Accessing \"this->tcl->running\" without holding lock \"web::TclEvaluator.renderer_mutex\". Elsewhere, \"web::TclEvaluator.running\" is written to with \"TclEvaluator.renderer_mutex\" held 3 out of 3 times (1 of these accesses strongly imply that it is necessary).\r\n333             if (tcl->running) {\r\n334               tcl->draw_skipped = true;\r\n335               return;\r\n336             }\r\n337           }\r\n338           seedRendererControls(hook);\n```\n\n## Solution\n\n| CID | Defect type | Resolution |\n|---|---|---|\n| 1688341 | `MISSING_LOCK` | Acquire the deferred renderer shared lock explicitly before reading TclEvaluator::running on non-live draws. |\n\n## Related\n\n- https://github.com/The-OpenROAD-Project/OpenROAD/pull/11683\n"
+      },
+      {
+        "id": "guidance",
+        "label": "Contribution Guidance (CONTRIBUTING.md)",
+        "url": "https://github.com/The-OpenROAD-Project/OpenROAD/blob/HEAD/CONTRIBUTING.md",
+        "text": "# Contributing to OpenROAD\n\nThank you for contributing to OpenROAD. For setup, coding standards,\nand workflow details, see the existing guides:\n\n- [Getting Involved](docs/contrib/GettingInvolved.md) -- how to contribute, licensing, DCO\n- [Developer Guide](docs/contrib/DeveloperGuide.md) -- architecture, tool structure, testing\n- [Coding Practices](docs/contrib/CodingPractices.md) -- C++ style and idioms\n- [Logger Guide](docs/contrib/Logger.md) -- logging API for C++ and Tcl\n\n## Review Priorities\n\nReviews are prioritized in this order:\n\n### 1. Correctness\n\nThe most important concern. Code must produce correct results.\n\n- Flag any code that could silently produce wrong output. An explicit\n  error is always preferable to silently incorrect behavior.\n- Watch for classic bugs: iterator invalidation, use-after-free,\n  off-by-one, integer overflow in area calculations (use `int64_t`\n  for area), deleting from a container while iterating over it.\n- Code after `error()` or `throw` is unreachable -- remove it.\n- If a test is being disabled or suppressed, ask whether it is hiding\n  a real bug.\n\n### 2. Quality of Results (QoR) Impact\n\nAny change that could affect placement, routing, timing, or other\nphysical design metrics must be validated.\n\n- Ask: \"Does this have a QoR impact?\" Changes affecting QoR require\n  validation on real designs, not just unit tests. Maintainers will\n  trigger the necessary CI runs for this.\n- Be skeptical of QoR improvements claimed from a single design.\n  Improvements should be validated across multiple designs and\n  technologies.\n\n### 3. Testing\n\nEvery code change should have accompanying tests. See the\n[Developer Guide](docs/contrib/DeveloperGuide.md#test) for test\nconventions.\n\n### 4. Architecture and Dependencies\n\nOpenROAD is a single-process, single-database tool. See the\n[Developer Guide](docs/contrib/DeveloperGuide.md#tool-philosophy) for\narchitectural guidelines and the\n[tool checklist](docs/contrib/DeveloperGuide.md#tool-checklist).\n\n### 5. C++ Style and Logging\n\nWe follow the [Google C++ style guide](https://google.github.io/styleguide/cppguide.html).\nSee [Coding Practices](docs/contrib/CodingPractices.md) for\nproject-specific idioms and the\n[Logger Guide](docs/contrib/Logger.md) for the logging API.\n\n### 6. Process\n\n- Every commit must include a DCO sign-off (`git commit -s`).\n- CI must be green before review. Reviewers may not look at\n  failing PRs.\n- Keep PRs focused on one bug or feature. Style fixes go in separate\n  commits.\n- Reference an open issue for non-trivial changes.\n- Mac builds are best-effort and not merge-blocking.\n\n## For AI/LLM Code Reviewers\n\nWhen reviewing OpenROAD pull requests, follow the priority order above.\nFocus review comments on correctness and QoR impact rather than style\nnitpicks -- `clang-tidy` and `clang-format` handle style automatically.\n\nSpecific guidance:\n\n- **Be concise.** One-word or one-sentence comments are preferred when\n  the issue is clear (e.g., \"const\", \"unreachable after throw\").\n- **Ask probing questions** rather than prescribing fixes for\n  non-obvious issues (e.g., \"Have you tested this on a real design?\"\n  or \"Could this hide a bug?\").\n- **Flag QoR-affecting changes** that lack validation on real designs.\n- **Don't generate summaries** of the PR unless asked. The config\n  disables automatic summaries.\n- **Do flag** unreachable code after `error()`/`throw`, missing\n  `const`, null pointer issues, iterator invalidation, and missing\n  tests.\n- **Don't flag** style issues already covered by `clang-format` or\n  `clang-tidy`.\n- **Check database schema changes** -- any change to the ODB schema\n  requires a revision bump to prevent old versions from misinterpreting\n  new data.\n- **Watch for memory concerns** -- `dbITerm` and similar objects are\n  numerous. Adding fields to heavily-instantiated classes has real\n  memory cost.\n\n## License\n\nContributions should use the BSD-3-Clause license. See [LICENSE](LICENSE).\n"
+      },
+      {
+        "id": "diff",
+        "label": "Unified Diff",
+        "url": "https://github.com/The-OpenROAD-Project/OpenROAD/pull/11924.diff",
+        "text": "diff --git a/src/web/src/web_serve.cpp b/src/web/src/web_serve.cpp\nindex 5435d25c604..abde7263c20 100644\n--- a/src/web/src/web_serve.cpp\n+++ b/src/web/src/web_serve.cpp\n@@ -327,9 +327,10 @@ void WebServer::serve(int port, const std::string& bind_address)\n       // typed in the browser during a script's pause -- only \"Live\" draws, at\n       // the user's risk.  Holding renderer_mutex keeps a command from\n       // starting, or resuming from its pause, mid-draw.\n-      std::shared_lock<std::shared_mutex> idle;\n+      std::shared_lock<std::shared_mutex> idle(tcl->renderer_mutex,\n+                                               std::defer_lock);\n       if (!debug_live) {\n-        idle = std::shared_lock<std::shared_mutex>(tcl->renderer_mutex);\n+        idle.lock();\n         if (tcl->running) {\n           tcl->draw_skipped = true;\n           return;\n"
+      },
+      {
+        "id": "patch:src/web/src/web_serve.cpp",
+        "label": "Patch: src/web/src/web_serve.cpp",
+        "url": "https://github.com/The-OpenROAD-Project/OpenROAD/blob/5bbad751ba283c4721ef15358c98b9e518e6f68d/src%2Fweb%2Fsrc%2Fweb_serve.cpp",
+        "text": "@@ -327,9 +327,10 @@ void WebServer::serve(int port, const std::string& bind_address)\n       // typed in the browser during a script's pause -- only \"Live\" draws, at\n       // the user's risk.  Holding renderer_mutex keeps a command from\n       // starting, or resuming from its pause, mid-draw.\n-      std::shared_lock<std::shared_mutex> idle;\n+      std::shared_lock<std::shared_mutex> idle(tcl->renderer_mutex,\n+                                               std::defer_lock);\n       if (!debug_live) {\n-        idle = std::shared_lock<std::shared_mutex>(tcl->renderer_mutex);\n+        idle.lock();\n         if (tcl->running) {\n           tcl->draw_skipped = true;\n           return;"
+      }
+    ],
+    "source_corpus": {
+      "title": "web: Lock renderer state before checking Tcl activity",
+      "body": "## Coverity Defect Log\n\n```text\n** CID 1688341:       Concurrent data access violations  (MISSING_LOCK)\r\n/src/web/src/web_serve.cpp: 333           in web::WebServer::serve(int, const std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> &)::[lambda(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) (instance 1)]::operator ()(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) const()\r\n\r\n\r\n_____________________________________________________________________________________________\r\n*** CID 1688341:         Concurrent data access violations  (MISSING_LOCK)\r\n/src/web/src/web_serve.cpp: 333             in web::WebServer::serve(int, const std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char>> &)::[lambda(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) (instance 1)]::operator ()(std::vector<unsigned char, std::allocator<unsigned char>> &, const web::TileFrame &, bool, odb::dbTechLayer *) const()\r\n327           // typed in the browser during a script's pause -- only \"Live\" draws, at\r\n328           // the user's risk.  Holding renderer_mutex keeps a command from\r\n329           // starting, or resuming from its pause, mid-draw.\r\n330           std::shared_lock<std::shared_mutex> idle;\r\n331           if (!debug_live) {\r\n332             idle = std::shared_lock<std::shared_mutex>(tcl->renderer_mutex);\r\n>>>     CID 1688341:         Concurrent data access violations  (MISSING_LOCK)\r\n>>>     Accessing \"this->tcl->running\" without holding lock \"web::TclEvaluator.renderer_mutex\". Elsewhere, \"web::TclEvaluator.running\" is written to with \"TclEvaluator.renderer_mutex\" held 3 out of 3 times (1 of these accesses strongly imply that it is necessary).\r\n333             if (tcl->running) {\r\n334               tcl->draw_skipped = true;\r\n335               return;\r\n336             }\r\n337           }\r\n338           seedRendererControls(hook);\n```\n\n## Solution\n\n| CID | Defect type | Resolution |\n|---|---|---|\n| 1688341 | `MISSING_LOCK` | Acquire the deferred renderer shared lock explicitly before reading TclEvaluator::running on non-live draws. |\n\n## Related\n\n- https://github.com/The-OpenROAD-Project/OpenROAD/pull/11683\n",
+      "diff": "diff --git a/src/web/src/web_serve.cpp b/src/web/src/web_serve.cpp\nindex 5435d25c604..abde7263c20 100644\n--- a/src/web/src/web_serve.cpp\n+++ b/src/web/src/web_serve.cpp\n@@ -327,9 +327,10 @@ void WebServer::serve(int port, const std::string& bind_address)\n       // typed in the browser during a script's pause -- only \"Live\" draws, at\n       // the user's risk.  Holding renderer_mutex keeps a command from\n       // starting, or resuming from its pause, mid-draw.\n-      std::shared_lock<std::shared_mutex> idle;\n+      std::shared_lock<std::shared_mutex> idle(tcl->renderer_mutex,\n+                                               std::defer_lock);\n       if (!debug_live) {\n-        idle = std::shared_lock<std::shared_mutex>(tcl->renderer_mutex);\n+        idle.lock();\n         if (tcl->running) {\n           tcl->draw_skipped = true;\n           return;\n",
+      "guidance": "# Contributing to OpenROAD\n\nThank you for contributing to OpenROAD. For setup, coding standards,\nand workflow details, see the existing guides:\n\n- [Getting Involved](docs/contrib/GettingInvolved.md) -- how to contribute, licensing, DCO\n- [Developer Guide](docs/contrib/DeveloperGuide.md) -- architecture, tool structure, testing\n- [Coding Practices](docs/contrib/CodingPractices.md) -- C++ style and idioms\n- [Logger Guide](docs/contrib/Logger.md) -- logging API for C++ and Tcl\n\n## Review Priorities\n\nReviews are prioritized in this order:\n\n### 1. Correctness\n\nThe most important concern. Code must produce correct results.\n\n- Flag any code that could silently produce wrong output. An explicit\n  error is always preferable to silently incorrect behavior.\n- Watch for classic bugs: iterator invalidation, use-after-free,\n  off-by-one, integer overflow in area calculations (use `int64_t`\n  for area), deleting from a container while iterating over it.\n- Code after `error()` or `throw` is unreachable -- remove it.\n- If a test is being disabled or suppressed, ask whether it is hiding\n  a real bug.\n\n### 2. Quality of Results (QoR) Impact\n\nAny change that could affect placement, routing, timing, or other\nphysical design metrics must be validated.\n\n- Ask: \"Does this have a QoR impact?\" Changes affecting QoR require\n  validation on real designs, not just unit tests. Maintainers will\n  trigger the necessary CI runs for this.\n- Be skeptical of QoR improvements claimed from a single design.\n  Improvements should be validated across multiple designs and\n  technologies.\n\n### 3. Testing\n\nEvery code change should have accompanying tests. See the\n[Developer Guide](docs/contrib/DeveloperGuide.md#test) for test\nconventions.\n\n### 4. Architecture and Dependencies\n\nOpenROAD is a single-process, single-database tool. See the\n[Developer Guide](docs/contrib/DeveloperGuide.md#tool-philosophy) for\narchitectural guidelines and the\n[tool checklist](docs/contrib/DeveloperGuide.md#tool-checklist).\n\n### 5. C++ Style and Logging\n\nWe follow the [Google C++ style guide](https://google.github.io/styleguide/cppguide.html).\nSee [Coding Practices](docs/contrib/CodingPractices.md) for\nproject-specific idioms and the\n[Logger Guide](docs/contrib/Logger.md) for the logging API.\n\n### 6. Process\n\n- Every commit must include a DCO sign-off (`git commit -s`).\n- CI must be green before review. Reviewers may not look at\n  failing PRs.\n- Keep PRs focused on one bug or feature. Style fixes go in separate\n  commits.\n- Reference an open issue for non-trivial changes.\n- Mac builds are best-effort and not merge-blocking.\n\n## For AI/LLM Code Reviewers\n\nWhen reviewing OpenROAD pull requests, follow the priority order above.\nFocus review comments on correctness and QoR impact rather than style\nnitpicks -- `clang-tidy` and `clang-format` handle style automatically.\n\nSpecific guidance:\n\n- **Be concise.** One-word or one-sentence comments are preferred when\n  the issue is clear (e.g., \"const\", \"unreachable after throw\").\n- **Ask probing questions** rather than prescribing fixes for\n  non-obvious issues (e.g., \"Have you tested this on a real design?\"\n  or \"Could this hide a bug?\").\n- **Flag QoR-affecting changes** that lack validation on real designs.\n- **Don't generate summaries** of the PR unless asked. The config\n  disables automatic summaries.\n- **Do flag** unreachable code after `error()`/`throw`, missing\n  `const`, null pointer issues, iterator invalidation, and missing\n  tests.\n- **Don't flag** style issues already covered by `clang-format` or\n  `clang-tidy`.\n- **Check database schema changes** -- any change to the ODB schema\n  requires a revision bump to prevent old versions from misinterpreting\n  new data.\n- **Watch for memory concerns** -- `dbITerm` and similar objects are\n  numerous. Adding fields to heavily-instantiated classes has real\n  memory cost.\n\n## License\n\nContributions should use the BSD-3-Clause license. See [LICENSE](LICENSE).\n",
+      "patch:src/web/src/web_serve.cpp": "@@ -327,9 +327,10 @@ void WebServer::serve(int port, const std::string& bind_address)\n       // typed in the browser during a script's pause -- only \"Live\" draws, at\n       // the user's risk.  Holding renderer_mutex keeps a command from\n       // starting, or resuming from its pause, mid-draw.\n-      std::shared_lock<std::shared_mutex> idle;\n+      std::shared_lock<std::shared_mutex> idle(tcl->renderer_mutex,\n+                                               std::defer_lock);\n       if (!debug_live) {\n-        idle = std::shared_lock<std::shared_mutex>(tcl->renderer_mutex);\n+        idle.lock();\n         if (tcl->running) {\n           tcl->draw_skipped = true;\n           return;",
+      "src/web/src/web_serve.cpp": "@@ -327,9 +327,10 @@ void WebServer::serve(int port, const std::string& bind_address)\n       // typed in the browser during a script's pause -- only \"Live\" draws, at\n       // the user's risk.  Holding renderer_mutex keeps a command from\n       // starting, or resuming from its pause, mid-draw.\n-      std::shared_lock<std::shared_mutex> idle;\n+      std::shared_lock<std::shared_mutex> idle(tcl->renderer_mutex,\n+                                               std::defer_lock);\n       if (!debug_live) {\n-        idle = std::shared_lock<std::shared_mutex>(tcl->renderer_mutex);\n+        idle.lock();\n         if (tcl->running) {\n           tcl->draw_skipped = true;\n           return;"
+    },
+    "diff_summary": {
+      "total_lines": 17,
+      "additions": 3,
+      "deletions": 2,
+      "changed_files": 1,
+      "is_truncated": false
+    },
+    "prepared_diff": "diff --git a/src/web/src/web_serve.cpp b/src/web/src/web_serve.cpp\nindex 5435d25c604..abde7263c20 100644\n--- a/src/web/src/web_serve.cpp\n+++ b/src/web/src/web_serve.cpp\n@@ -327,9 +327,10 @@ void WebServer::serve(int port, const std::string& bind_address)\n       // typed in the browser during a script's pause -- only \"Live\" draws, at\n       // the user's risk.  Holding renderer_mutex keeps a command from\n       // starting, or resuming from its pause, mid-draw.\n-      std::shared_lock<std::shared_mutex> idle;\n+      std::shared_lock<std::shared_mutex> idle(tcl->renderer_mutex,\n+                                               std::defer_lock);\n       if (!debug_live) {\n-        idle = std::shared_lock<std::shared_mutex>(tcl->renderer_mutex);\n+        idle.lock();\n         if (tcl->running) {\n           tcl->draw_skipped = true;\n           return;\n",
+    "comments_summary": [],
+    "linked_issue_signal": "unknown",
+    "contributing_guidance": {
+      "status": "present",
+      "path": "CONTRIBUTING.md",
+      "has_guidance": true
+    }
+  },
+  "diff_summary": {
+    "total_lines": 17,
+    "additions": 3,
+    "deletions": 2,
+    "changed_files": 1,
+    "is_truncated": false
+  },
+  "diff_truncated": false,
+  "is_partial": false,
+  "partial_reason": "",
+  "model": "gemma-4-26b-a4b-it",
+  "cache_hit": true,
+  "cached_on": "2026-10-22 11:43:17 UTC",
+  "cache_label": "cached on 2026-10-22 11:43:17 UTC",
+  "metadata": {
+    "dataSource": "GitHub REST API (Live)",
+    "auditedAt": "2026-10-22 11:43:17 UTC",
+    "assessorModel": "gemma-4-26b-a4b-it via REST API"
+  },
+  "cached_at": "2026-10-22 11:43:17 UTC"
+}

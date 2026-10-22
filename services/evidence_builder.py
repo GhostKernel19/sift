@@ -69,6 +69,8 @@ def build_evidence_packet(
     max_diff_lines: int = 1500,
     pr_files: Optional[list[dict[str, Any]]] = None,
     contributing_guidance: Optional[dict[str, Any] | str] = None,
+    max_diff_chars: int = 20000,
+    max_guidance_chars: int = 3000,
 ) -> dict[str, Any]:
     """Assembles retrieved GitHub data into a structured evidence packet for assessment.
 
@@ -85,6 +87,8 @@ def build_evidence_packet(
         pr_files: Optional list of per-file patch dictionaries from fetch_pr_files.
         contributing_guidance: Optional guidance dict from fetch_contributing_guidance
                                or raw markdown string.
+        max_diff_chars: Maximum characters of diff text (default 20,000).
+        max_guidance_chars: Maximum characters of contributing text (default 3,000).
 
     Returns:
         dict: Standardized evidence packet containing:
@@ -93,7 +97,7 @@ def build_evidence_packet(
             - "sources": List of {id, label, url, text} with authentic unedited text
             - "source_corpus": Dict[str, str] mapping source IDs to authentic text
             - "diff_summary": Line and file counts, truncation indicator
-            - "prepared_diff": Diff context bounded by max_diff_lines
+            - "prepared_diff": Diff context bounded by max_diff_lines and max_diff_chars
             - "comments_summary": Formatted comments overview
             - "linked_issue_signal": Provable signal or "unknown"
             - "contributing_guidance": Guidance information and presence status
@@ -115,9 +119,23 @@ def build_evidence_packet(
     body_text = str(pr_details.get("body") or "")
     diff_text = str(pr_diff or "")
     comments = list(pr_comments) if pr_comments else []
-    files = list(pr_files) if pr_files else []
 
-    # Parse contributing guidance
+    # Cap per-file patches (e.g. 4000 chars per file patch)
+    files: list[dict[str, Any]] = []
+    if pr_files:
+        per_file_char_limit = 4000
+        for f in pr_files:
+            f_item = dict(f)
+            patch = f_item.get("patch")
+            if isinstance(patch, str) and len(patch) > per_file_char_limit:
+                f_item["patch"] = (
+                    patch[:per_file_char_limit]
+                    + f"\n[Patch truncated: exceeded {per_file_char_limit} characters]"
+                )
+                f_item["truncated"] = True
+            files.append(f_item)
+
+    # Parse contributing guidance and cap to max_guidance_chars (3,000 chars)
     guidance_status = "unavailable"
     guidance_path: Optional[str] = None
     guidance_text = ""
@@ -129,6 +147,12 @@ def build_evidence_packet(
         guidance_status = "present"
         guidance_path = "CONTRIBUTING.md"
         guidance_text = contributing_guidance
+
+    if len(guidance_text) > max_guidance_chars:
+        guidance_text = (
+            guidance_text[:max_guidance_chars]
+            + f"\n\n[CONTRIBUTING guidance truncated to {max_guidance_chars} characters]"
+        )
 
     # Provable linked-issue detection
     linked_signal, detected_signals = detect_linked_issue_signal(body=body_text, title=title_text)
@@ -265,19 +289,34 @@ def build_evidence_packet(
     # Diff summary and prompt preparation
     diff_lines = diff_text.splitlines()
     total_diff_lines = len(diff_lines)
-    is_diff_truncated = total_diff_lines > max_diff_lines
+    total_diff_chars = len(diff_text)
+    is_line_truncated = total_diff_lines > max_diff_lines
+    is_char_truncated = total_diff_chars > max_diff_chars
+    is_diff_truncated = is_line_truncated or is_char_truncated
 
     if is_diff_truncated:
-        kept_lines = diff_lines[:max_diff_lines]
-        prepared_diff = (
-            "\n".join(kept_lines)
-            + f"\n\n[Diff truncated: showing first {max_diff_lines} lines of {total_diff_lines} total lines.]"
-        )
+        if is_line_truncated:
+            kept_lines = diff_lines[:max_diff_lines]
+            candidate_diff = "\n".join(kept_lines)
+        else:
+            candidate_diff = diff_text
+
+        if len(candidate_diff) > max_diff_chars:
+            prepared_diff = (
+                candidate_diff[:max_diff_chars]
+                + f"\n\n[Diff truncated: exceeded {max_diff_chars} characters limit.]"
+            )
+        else:
+            prepared_diff = (
+                candidate_diff
+                + f"\n\n[Diff truncated: showing first {max_diff_lines} lines of {total_diff_lines} total lines.]"
+            )
     else:
         prepared_diff = diff_text
 
     diff_summary = {
         "total_lines": total_diff_lines,
+        "total_chars": total_diff_chars,
         "additions": pr_facts["additions"],
         "deletions": pr_facts["deletions"],
         "changed_files": pr_facts["changed_files"],
@@ -306,6 +345,7 @@ def build_evidence_packet(
             "status": guidance_status,
             "path": guidance_path,
             "has_guidance": (guidance_status == "present"),
+            "text": guidance_text,
         },
     }
 

@@ -682,7 +682,8 @@ html, body {
   text-transform: uppercase;
 }
 
-.badge-sample {
+.badge-sample,
+.badge-cached {
   background-color: var(--color-sun);
   color: var(--color-ink);
 }
@@ -851,7 +852,8 @@ html, body {
   color: var(--color-ink);
 }
 
-.queue-item-badge.badge-sample {
+.queue-item-badge.badge-sample,
+.queue-item-badge.badge-cached {
   background-color: var(--color-sun);
   color: var(--color-ink);
 }

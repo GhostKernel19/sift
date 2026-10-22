@@ -51,14 +51,64 @@ GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 DEFAULT_TIMEOUT_SECONDS = 90
 MAX_CONNECTION_RETRIES = 1
 
-ErrorType = Literal["provider_error", "timeout", "invalid_output", "config_error"]
+ErrorType = Literal["provider_error", "timeout", "invalid_output", "config_error", "rate_limit"]
 
 
-class AssessmentErrorDict(TypedDict):
+class AssessmentErrorDict(TypedDict, total=False):
     status: Literal["error"]
     error_type: ErrorType
     error: str
     details: str
+    retry_delay: Optional[int]
+
+
+def parse_retry_delay(response_text: str = "", headers: Optional[Any] = None) -> int:
+    """Extracts retry delay in seconds from 429 response body or headers.
+
+    Default fallback: 15 seconds.
+    """
+    if headers:
+        retry_after = headers.get("Retry-After") or headers.get("retry-after")
+        if retry_after:
+            try:
+                val = int(float(str(retry_after).strip()))
+                if val > 0:
+                    return min(val, 120)
+            except (ValueError, TypeError):
+                pass
+
+    if response_text:
+        try:
+            data = json.loads(response_text)
+            if isinstance(data, dict):
+                error_obj = data.get("error", {})
+                details = error_obj.get("details", [])
+                if isinstance(details, list):
+                    for d in details:
+                        if isinstance(d, dict):
+                            rd = d.get("retryDelay") or d.get("retry_delay")
+                            if rd:
+                                match = re.search(r"(\d+(?:\.\d+)?)", str(rd))
+                                if match:
+                                    return max(1, min(int(float(match.group(1))), 120))
+                msg = error_obj.get("message", "")
+                match = re.search(r"retry\s+(?:in|after)\s+(\d+(?:\.\d+)?)\s*s", msg, re.IGNORECASE)
+                if match:
+                    return max(1, min(int(float(match.group(1))), 120))
+                match = re.search(r"wait\s+(\d+(?:\.\d+)?)\s*s", msg, re.IGNORECASE)
+                if match:
+                    return max(1, min(int(float(match.group(1))), 120))
+        except Exception:
+            pass
+
+        match = re.search(r'retryDelay["\']?\s*:\s*["\']?(\d+(?:\.\d+)?)s?["\']?', response_text)
+        if match:
+            return max(1, min(int(float(match.group(1))), 120))
+        match = re.search(r"(\d+(?:\.\d+)?)\s*seconds?", response_text, re.IGNORECASE)
+        if match:
+            return max(1, min(int(float(match.group(1))), 120))
+
+    return 15
 
 
 class GemmaAssessorError(Exception):
@@ -69,19 +119,24 @@ class GemmaAssessorError(Exception):
         message: str,
         error_type: ErrorType = "provider_error",
         details: str = "",
+        retry_delay: Optional[int] = None,
     ) -> None:
         super().__init__(message)
         self.message = message
         self.error_type = error_type
         self.details = details or message
+        self.retry_delay = retry_delay
 
     def to_dict(self) -> AssessmentErrorDict:
-        return {
+        d: AssessmentErrorDict = {
             "status": "error",
             "error_type": self.error_type,
             "error": self.message,
             "details": self.details,
         }
+        if self.retry_delay is not None:
+            d["retry_delay"] = self.retry_delay
+        return d
 
 
 def _sanitize_text(text: str, api_key: Optional[str] = None) -> str:
@@ -230,6 +285,14 @@ def call_gemma_api(
             response = requests.post(url, headers=headers, json=payload, timeout=timeout)
             if not response.ok:
                 sanitized_text = _sanitize_text(response.text, key)
+                if response.status_code == 429:
+                    retry_delay = parse_retry_delay(response.text, response.headers)
+                    raise GemmaAssessorError(
+                        "Rate limited by the free Gemini tier.",
+                        error_type="rate_limit",
+                        details=sanitized_text,
+                        retry_delay=retry_delay,
+                    )
                 raise GemmaAssessorError(
                     f"Gemma API request failed with status code {response.status_code}: {sanitized_text}",
                     error_type="provider_error",
@@ -313,7 +376,24 @@ def construct_assessment_prompt(evidence_packet: dict[str, Any]) -> str:
         or evidence_packet.get("diff")
         or evidence_packet.get("pr_diff", "")
     )
-    diff_display = diff.strip() if diff.strip() else "[DIFF IS EMPTY - NO CODE CHANGES DETECTED]"
+    if len(diff) > 20000:
+        diff_display = diff[:20000] + "\n\n[Diff truncated: exceeded 20,000 characters limit.]"
+    else:
+        diff_display = diff.strip() if diff.strip() else "[DIFF IS EMPTY - NO CODE CHANGES DETECTED]"
+
+    # Contributing guidance (cap at 3,000 chars)
+    guidance_info = evidence_packet.get("contributing_guidance") or {}
+    guidance_text = ""
+    if isinstance(guidance_info, dict):
+        guidance_text = str(guidance_info.get("text") or "")
+    if not guidance_text:
+        guidance_text = str(evidence_packet.get("source_corpus", {}).get("guidance", ""))
+
+    guidance_section = ""
+    if guidance_text.strip():
+        if len(guidance_text) > 3000:
+            guidance_text = guidance_text[:3000] + "\n\n[CONTRIBUTING guidance truncated to 3,000 characters limit.]"
+        guidance_section = f"\n=== CONTRIBUTING GUIDANCE ===\n{guidance_text.strip()}\n"
 
     diff_summary = evidence_packet.get("diff_summary", "")
     comments_summary = str(
@@ -362,7 +442,7 @@ Diff Summary: {diff_summary}
 
 === PR DESCRIPTION (BODY) ===
 {body}
-
+{guidance_section}
 === UNIFIED DIFF ===
 {diff_display}
 
@@ -539,7 +619,7 @@ if __name__ == "__main__":
     import pprint
     load_dotenv()
     print("=== Sift Gemma 4 Assessor Manual Verification ===")
-    sample_packet = {
+    verification_packet = {
         "pr_info": {
             "title": "Fix typo in README.md",
             "body": "This PR corrects a small typo in the installation instructions.",
@@ -573,5 +653,5 @@ if __name__ == "__main__":
         print("To run a live test, set GEMINI_API_KEY and run: python -m services.gemma_assessor")
     else:
         print("Running live assessment against Gemma 4...")
-        result = assess(sample_packet)
+        result = assess(verification_packet)
         pprint.pprint(result)
